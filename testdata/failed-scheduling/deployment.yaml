@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics
+  namespace: data
+  uid: dep-uid-4
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analytics
+  template:
+    metadata:
+      labels:
+        app: analytics
+    spec:
+      containers:
+        - name: app
+          image: analytics:1.2
+          resources:
+            requests:
+              cpu: "8"
+              memory: 16Gi
+status:
+  replicas: 1
+  updatedReplicas: 1
+  readyReplicas: 0
+  availableReplicas: 0
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: analytics-6c9d4
+  namespace: data
+  labels:
+    app: analytics
+  uid: rs-uid-4
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: analytics
+      uid: dep-uid-4
+      controller: true
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analytics
+  template:
+    metadata:
+      labels:
+        app: analytics
+    spec:
+      containers:
+        - name: app
+          image: analytics:1.2

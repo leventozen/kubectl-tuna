@@ -1,0 +1,52 @@
+# Scenario: the container grows its heap past a 16Mi memory limit and is
+# OOMKilled by the cgroup killer, entering CrashLoopBackOff.
+#
+# Expected kdiag diagnosis:
+#   root cause:  container-oomkilled (cgroup limit, not node pressure)
+#   chain:       container-oomkilled → crashloop-backoff
+#                → pod-not-ready → deployment-unavailable
+#
+# Note: `tail /dev/zero` does NOT reliably grow RSS under cgroup v2 / Kind —
+# it often blocks without allocating. The shell loop below grows the heap of
+# PID 1 until the OOM killer terminates it with reason=OOMKilled.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kdiag-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing
+  namespace: kdiag-demo
+spec:
+  replicas: 1
+  # Fail the rollout quickly once the new pods never become available.
+  progressDeadlineSeconds: 60
+  selector:
+    matchLabels:
+      app: billing
+  template:
+    metadata:
+      labels:
+        app: billing
+    spec:
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: app
+          image: busybox:1.36
+          # PID 1 is the shell running the loop, so the cgroup OOM killer
+          # reports reason=OOMKilled (not Error/137 on a child process).
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              x=x
+              while true; do
+                x=$x$x$x$x
+              done
+          resources:
+            requests:
+              memory: 8Mi
+            limits:
+              memory: 16Mi

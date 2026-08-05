@@ -1,0 +1,5 @@
+bin/
+dist/
+.venv-gif/
+*.test
+.DS_Store

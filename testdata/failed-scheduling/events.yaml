@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Event
+metadata:
+  name: analytics-failedscheduling-1
+  namespace: data
+involvedObject:
+  kind: Pod
+  name: analytics-6c9d4-p2j7m
+  namespace: data
+reason: FailedScheduling
+message: "0/3 nodes are available: 3 Insufficient cpu. preemption: 0/3 nodes are available: 3 No preemption victims found for incoming pod."
+count: 12
+type: Warning

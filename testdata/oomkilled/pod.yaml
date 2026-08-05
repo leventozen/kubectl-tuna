@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: billing-5d8f7-q4wz8
+  namespace: finance
+  labels:
+    app: billing
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: ReplicaSet
+      name: billing-5d8f7
+      uid: rs-uid-3
+      controller: true
+spec:
+  containers:
+    - name: app
+      image: billing:3.4
+      resources:
+        limits:
+          memory: 512Mi
+        requests:
+          memory: 256Mi
+status:
+  phase: Running
+  qosClass: Burstable
+  conditions:
+    - type: PodScheduled
+      status: "True"
+    - type: Ready
+      status: "False"
+      reason: ContainersNotReady
+      message: "containers with unready status: [app]"
+  containerStatuses:
+    - name: app
+      ready: false
+      restartCount: 7
+      image: billing:3.4
+      imageID: ""
+      containerID: ""
+      state:
+        waiting:
+          reason: CrashLoopBackOff
+          message: back-off 5m0s restarting failed container
+      lastState:
+        terminated:
+          reason: OOMKilled
+          exitCode: 137
+          startedAt: "2026-08-05T09:55:00Z"
+          finishedAt: "2026-08-05T10:00:00Z"

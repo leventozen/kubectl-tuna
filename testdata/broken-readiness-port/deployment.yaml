@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  namespace: finance
+  uid: dep-uid-1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment
+  template:
+    metadata:
+      labels:
+        app: payment
+    spec:
+      containers:
+        - name: app
+          image: payment:1.0
+status:
+  replicas: 1
+  updatedReplicas: 1
+  readyReplicas: 0
+  availableReplicas: 0
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: payment-7b889d
+  namespace: finance
+  labels:
+    app: payment
+  uid: rs-uid-1
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: payment
+      uid: dep-uid-1
+      controller: true
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment
+  template:
+    metadata:
+      labels:
+        app: payment
+    spec:
+      containers:
+        - name: app
+          image: payment:1.0

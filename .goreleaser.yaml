@@ -1,0 +1,69 @@
+version: 2
+project_name: kdiag
+
+builds:
+  # Released as kubectl-diag so `kubectl diag …` works via PATH or krew.
+  - id: kubectl-diag
+    main: ./cmd/kdiag
+    binary: kubectl-diag
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: default
+    builds: [kubectl-diag]
+    name_template: >-
+      kubectl-diag_{{ .Tag }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+# Attach the generated krew manifest to the GitHub Release so users can
+# `kubectl krew install --manifest=…/diag.yaml` before the index PR lands.
+release:
+  extra_files:
+    - glob: ./dist/diag.yaml
+
+changelog:
+  use: github
+  sort: asc
+
+# Generates dist/diag.yaml after each release. Upload is skipped: submit the
+# file to kubernetes-sigs/krew-index (or install locally with
+# `kubectl krew install --manifest=… --archive=…`) once a tag is cut.
+krews:
+  - name: diag
+    ids: [default]
+    skip_upload: true
+    homepage: https://github.com/leventozen/kdiag
+    short_description: Evidence-based Kubernetes causal diagnostics
+    description: |-
+      kdiag builds a relationship graph around a Kubernetes resource and
+      evaluates deterministic diagnostic rules, then correlates findings into
+      an evidence-backed causal chain that separates root causes from
+      propagated symptoms.
+
+      Examples:
+        kubectl diag inspect service payment -n finance
+        kubectl diag inspect deployment billing -n finance
+        kubectl diag inspect pod checkout-7b889d-x8p2 -n shop -o json
+    caveats: |-
+      * Requires read access to the inspected resource and its related objects
+        (Pods, ReplicaSets, Services, EndpointSlices, Events, Nodes, and
+        ConfigMaps). Secret references are recorded, but Secret objects and
+        payloads are not fetched.
+      * Does not modify cluster state.

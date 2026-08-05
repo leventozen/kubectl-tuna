@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cache-7f9c2-b4xk1
+  namespace: prod
+  labels:
+    app: cache
+spec:
+  nodeName: worker-1
+  containers:
+    - name: app
+      image: redis:7-alpine
+status:
+  phase: Failed
+  reason: Evicted
+  message: "The node was low on resource: memory. Threshold quantity: 100Mi, available: 52Mi. Container app was using 900Mi, request is 0, has larger consumption of memory."
+  qosClass: BestEffort

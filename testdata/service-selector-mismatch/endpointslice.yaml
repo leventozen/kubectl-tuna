@@ -1,0 +1,13 @@
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: checkout-api-x9k2f
+  namespace: production
+  labels:
+    kubernetes.io/service-name: checkout-api
+addressType: IPv4
+ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+endpoints: []

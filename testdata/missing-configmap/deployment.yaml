@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifier
+  namespace: messaging
+  uid: dep-uid-5
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notifier
+  template:
+    metadata:
+      labels:
+        app: notifier
+    spec:
+      containers:
+        - name: app
+          image: notifier:0.9
+          envFrom:
+            - configMapRef:
+                name: notifier-config
+status:
+  replicas: 1
+  updatedReplicas: 1
+  readyReplicas: 0
+  availableReplicas: 0
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: notifier-8f6b2
+  namespace: messaging
+  labels:
+    app: notifier
+  uid: rs-uid-5
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: notifier
+      uid: dep-uid-5
+      controller: true
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notifier
+  template:
+    metadata:
+      labels:
+        app: notifier
+    spec:
+      containers:
+        - name: app
+          image: notifier:0.9

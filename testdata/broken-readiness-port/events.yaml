@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Event
+metadata:
+  name: payment-unhealthy-1
+  namespace: finance
+involvedObject:
+  kind: Pod
+  name: payment-7b889d-x8p2
+  namespace: finance
+reason: Unhealthy
+message: 'Readiness probe failed: Get "http://10.244.1.5:8080/health": dial tcp 10.244.1.5:8080: connect: connection refused'
+count: 37
+type: Warning

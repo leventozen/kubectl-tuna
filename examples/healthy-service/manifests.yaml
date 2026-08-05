@@ -1,0 +1,46 @@
+# Healthy control scenario. The e2e suite requires zero findings, complete
+# evidence, and health=healthy after the Deployment becomes available.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kdiag-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: healthy-api
+  namespace: kdiag-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: healthy-api
+  template:
+    metadata:
+      labels:
+        app: healthy-api
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: healthy-api
+  namespace: kdiag-demo
+spec:
+  selector:
+    app: healthy-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

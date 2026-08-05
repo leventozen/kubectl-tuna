@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: jobs
+  uid: dep-uid-6
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: app
+          image: worker:2.0
+          resources:
+            limits:
+              memory: 128Mi
+status:
+  replicas: 1
+  updatedReplicas: 1
+  readyReplicas: 0
+  availableReplicas: 0
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: worker-4b7c9
+  namespace: jobs
+  labels:
+    app: worker
+  uid: rs-uid-6
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: worker
+      uid: dep-uid-6
+      controller: true
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: app
+          image: worker:2.0

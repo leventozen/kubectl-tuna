@@ -1,0 +1,71 @@
+# Template krew plugin manifest for local testing and as a reference for the
+# kubernetes-sigs/krew-index submission. After cutting a release, prefer the
+# generated file from GoReleaser (`dist/diag.yaml`), which has real URIs and
+# sha256 sums filled in.
+#
+# Local install from a built archive:
+#   make release-snapshot
+#   kubectl krew install --manifest=dist/diag.yaml --archive=dist/kubectl-diag_*_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
+#
+# Or install the binary onto PATH without krew:
+#   make install-plugin
+apiVersion: krew.googlecontainertools.github.com/v1alpha2
+kind: Plugin
+metadata:
+  name: diag
+spec:
+  version: VERSION
+  homepage: https://github.com/leventozen/kdiag
+  shortDescription: Evidence-based Kubernetes causal diagnostics
+  description: |
+    kdiag builds a relationship graph around a Kubernetes resource and
+    evaluates deterministic diagnostic rules, then correlates findings into
+    an evidence-backed causal chain that separates root causes from
+    propagated symptoms.
+
+    Examples:
+      kubectl diag inspect service payment -n finance
+      kubectl diag inspect deployment billing -n finance
+      kubectl diag inspect pod checkout-7b889d-x8p2 -n shop -o json
+  caveats: |
+    * Requires read access to the inspected resource and its related objects
+      (Pods, ReplicaSets, Services, EndpointSlices, Events, Nodes, and
+      ConfigMaps). Secret references are recorded, but Secret objects and
+      payloads are not fetched.
+    * Does not modify cluster state.
+  platforms:
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: amd64
+      uri: https://github.com/leventozen/kdiag/releases/download/VERSION/kubectl-diag_VERSION_darwin_amd64.tar.gz
+      sha256: SHA256
+      bin: kubectl-diag
+    - selector:
+        matchLabels:
+          os: darwin
+          arch: arm64
+      uri: https://github.com/leventozen/kdiag/releases/download/VERSION/kubectl-diag_VERSION_darwin_arm64.tar.gz
+      sha256: SHA256
+      bin: kubectl-diag
+    - selector:
+        matchLabels:
+          os: linux
+          arch: amd64
+      uri: https://github.com/leventozen/kdiag/releases/download/VERSION/kubectl-diag_VERSION_linux_amd64.tar.gz
+      sha256: SHA256
+      bin: kubectl-diag
+    - selector:
+        matchLabels:
+          os: linux
+          arch: arm64
+      uri: https://github.com/leventozen/kdiag/releases/download/VERSION/kubectl-diag_VERSION_linux_arm64.tar.gz
+      sha256: SHA256
+      bin: kubectl-diag
+    - selector:
+        matchLabels:
+          os: windows
+          arch: amd64
+      uri: https://github.com/leventozen/kdiag/releases/download/VERSION/kubectl-diag_VERSION_windows_amd64.zip
+      sha256: SHA256
+      bin: kubectl-diag.exe

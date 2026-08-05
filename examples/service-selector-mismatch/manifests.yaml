@@ -1,0 +1,46 @@
+# Scenario: the Service selector says app=checkout but the Deployment labels
+# its Pods app=checkout-api. Pods are Ready, yet the Service has no endpoints.
+#
+# Expected kdiag diagnosis:
+#   root cause:  service-selector-no-pods (the empty match is proven; kdiag
+#                does not guess which workload the operator intended)
+#   chain:       service-selector-no-pods → service-no-ready-endpoints
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kdiag-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout-api
+  namespace: kdiag-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: checkout-api
+  template:
+    metadata:
+      labels:
+        app: checkout-api
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout-api
+  namespace: kdiag-demo
+spec:
+  selector:
+    app: checkout # BUG: pods are labeled app=checkout-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

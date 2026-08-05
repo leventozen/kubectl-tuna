@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing
+  namespace: finance
+  uid: dep-uid-3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing
+  template:
+    metadata:
+      labels:
+        app: billing
+    spec:
+      containers:
+        - name: app
+          image: billing:3.4
+          resources:
+            limits:
+              memory: 512Mi
+status:
+  replicas: 1
+  updatedReplicas: 1
+  readyReplicas: 0
+  availableReplicas: 0
+  conditions:
+    - type: Progressing
+      status: "False"
+      reason: ProgressDeadlineExceeded
+      message: ReplicaSet "billing-5d8f7" has timed out progressing.
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: billing-5d8f7
+  namespace: finance
+  labels:
+    app: billing
+  uid: rs-uid-3
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: billing
+      uid: dep-uid-3
+      controller: true
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing
+  template:
+    metadata:
+      labels:
+        app: billing
+    spec:
+      containers:
+        - name: app
+          image: billing:3.4

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Event
+metadata:
+  name: cache-evicted-1
+  namespace: prod
+involvedObject:
+  kind: Pod
+  name: cache-7f9c2-b4xk1
+  namespace: prod
+reason: Evicted
+message: "The node was low on resource: memory. Threshold quantity: 100Mi, available: 52Mi."
+count: 1
+type: Warning

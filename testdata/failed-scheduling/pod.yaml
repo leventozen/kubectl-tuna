@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: analytics-6c9d4-p2j7m
+  namespace: data
+  labels:
+    app: analytics
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: ReplicaSet
+      name: analytics-6c9d4
+      uid: rs-uid-4
+      controller: true
+spec:
+  containers:
+    - name: app
+      image: analytics:1.2
+      resources:
+        requests:
+          cpu: "8"
+          memory: 16Gi
+status:
+  phase: Pending
+  qosClass: Burstable
+  conditions:
+    - type: PodScheduled
+      status: "False"
+      reason: Unschedulable
+      message: "0/3 nodes are available: 3 Insufficient cpu. preemption: 0/3 nodes are available: 3 No preemption victims found for incoming pod."

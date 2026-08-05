@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-1
+  namespace: default
+  labels:
+    app: web
+spec:
+  containers:
+    - name: app
+      image: web:1.0
+      ports:
+        - name: http
+          containerPort: 8080
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+status:
+  phase: Running
+  qosClass: BestEffort
+  conditions:
+    - type: PodScheduled
+      status: "True"
+    - type: Ready
+      status: "True"
+  containerStatuses:
+    - name: app
+      ready: true
+      restartCount: 0
+      image: web:1.0
+      imageID: ""
+      containerID: ""
+      started: true
+      state:
+        running:
+          startedAt: "2026-08-05T10:00:00Z"

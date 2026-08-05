@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="560" viewBox="0 0 920 560" role="img" aria-label="kdiag diagnosing a Service with a causal chain">
+  <defs>
+    <style>
+      .frame { fill: #0d1117; stroke: #30363d; stroke-width: 1; }
+      .titlebar { fill: #161b22; }
+      .dot-r { fill: #ff5f56; } .dot-y { fill: #ffbd2e; } .dot-g { fill: #27c93f; }
+      .prompt { fill: #8b949e; font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .cmd { fill: #e6edf3; font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .out { fill: #c9d1d9; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .bold { fill: #f0f6fc; font: 700 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .red { fill: #ff7b72; font: 700 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .cyan { fill: #79c0ff; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .dim { fill: #8b949e; font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .line { opacity: 0; }
+    </style>
+  </defs>
+
+  <rect class="frame" x="1" y="1" width="918" height="558" rx="10"/>
+  <rect class="titlebar" x="1" y="1" width="918" height="36" rx="10"/>
+  <rect class="titlebar" x="1" y="20" width="918" height="17"/>
+  <circle class="dot-r" cx="22" cy="18" r="6"/>
+  <circle class="dot-y" cx="42" cy="18" r="6"/>
+  <circle class="dot-g" cx="62" cy="18" r="6"/>
+  <text class="dim" x="460" y="22" text-anchor="middle">kdiag  causal diagnosis</text>
+
+  <!-- prompt -->
+  <g class="line" id="l0">
+    <text x="24" y="64"><tspan class="prompt">$ </tspan><tspan class="cmd">kdiag inspect service payment -n finance</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="0.3s" fill="freeze"/>
+  </g>
+
+  <g class="line" id="l1">
+    <text class="out" x="24" y="96"><tspan fill="#8b949e">Kind:      </tspan><tspan class="bold">Service</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.0s" fill="freeze"/>
+  </g>
+
+  <g class="line" id="l1b">
+    <text class="out" x="24" y="116"><tspan fill="#8b949e">Namespace: </tspan>kdiag-demo</text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.2s" fill="freeze"/>
+  </g>
+  <g class="line" id="l1c">
+    <text class="out" x="24" y="136"><tspan fill="#8b949e">Name:      </tspan>payment</text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.35s" fill="freeze"/>
+  </g>
+
+  <g class="line" id="l2">
+    <text x="24" y="156"><tspan class="out" fill="#8b949e">Health:    </tspan><tspan class="red">DEGRADED</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.4s" fill="freeze"/>
+  </g>
+
+  <g class="line" id="l3">
+    <text class="bold" x="24" y="154">Root cause candidates</text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="1.9s" fill="freeze"/>
+  </g>
+
+  <g class="line" id="l4">
+    <text x="24" y="180"><tspan class="out">  [1] </tspan><tspan class="red">CRITICAL</tspan><tspan class="bold"> readiness-probe-port-mismatch</tspan><tspan class="dim">  (confidence: high)</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.3s" fill="freeze"/>
+  </g>
+
+  <g class="line" id="l5">
+    <text class="dim" x="48" y="200">Pod/finance/payment-7b889d-x8p2</text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.6s" fill="freeze"/>
+  </g>
+
+  <g class="line" id="l6">
+    <text class="out" x="48" y="220">Readiness probe targets port 8080, but the container declares 8081</text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="2.9s" fill="freeze"/>
+  </g>
+
+  <g class="line" id="l7">
+    <text class="bold" x="48" y="250">Evidence:</text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="3.4s" fill="freeze"/>
+  </g>
+  <g class="line" id="l8">
+    <text x="60" y="270"><tspan class="out">- </tspan><tspan class="cyan">container[app].readinessProbe</tspan><tspan class="out">: port 8080</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="3.7s" fill="freeze"/>
+  </g>
+  <g class="line" id="l9">
+    <text x="60" y="290"><tspan class="out">- </tspan><tspan class="cyan">container[app].ports</tspan><tspan class="out">: 8081 (name: http)</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="4.0s" fill="freeze"/>
+  </g>
+  <g class="line" id="l10">
+    <text x="60" y="310"><tspan class="out">- </tspan><tspan class="cyan">events (Unhealthy)</tspan><tspan class="out">: readiness probe failed 37 time(s)</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="4.3s" fill="freeze"/>
+  </g>
+
+  <g class="line" id="l11">
+    <text class="bold" x="48" y="344">Causal chain:</text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="5.0s" fill="freeze"/>
+  </g>
+  <g class="line" id="l12">
+    <text class="out" x="60" y="366">readiness-probe-port-mismatch</text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="5.3s" fill="freeze"/>
+  </g>
+  <g class="line" id="l13">
+    <text x="72" y="388"><tspan class="cyan">ù </tspan><tspan class="out">readiness-probe-failing</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="5.7s" fill="freeze"/>
+  </g>
+  <g class="line" id="l14">
+    <text x="96" y="410"><tspan class="cyan">ù </tspan><tspan class="out">pod-not-ready</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="6.1s" fill="freeze"/>
+  </g>
+  <g class="line" id="l15">
+    <text x="120" y="432"><tspan class="cyan">ù </tspan><tspan class="out">service-no-ready-endpoints</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="6.5s" fill="freeze"/>
+  </g>
+
+  <g class="line" id="l16">
+    <text class="dim" x="24" y="472">Propagated symptoms (explained by the causes above)</text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="7.2s" fill="freeze"/>
+  </g>
+  <g class="line" id="l17">
+    <text x="36" y="494"><tspan class="red">CRITICAL</tspan><tspan class="dim">  service-no-ready-endpoints</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="7.5s" fill="freeze"/>
+  </g>
+  <g class="line" id="l18">
+    <text x="36" y="516"><tspan class="out" fill="#d29922">WARNING</tspan><tspan class="dim">   pod-not-ready ù deployment-unavailable</tspan></text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="7.8s" fill="freeze"/>
+  </g>
+  <g class="line" id="l19">
+    <text class="dim" x="24" y="544">Four findings, one diagnosis.</text>
+    <animate attributeName="opacity" values="0;1" dur="0.2s" begin="8.4s" fill="freeze"/>
+  </g>
+</svg>

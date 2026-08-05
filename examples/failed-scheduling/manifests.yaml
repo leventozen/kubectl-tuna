@@ -1,0 +1,32 @@
+# Scenario: the Pod requests 64 CPUs; no node can satisfy it, so the
+# scheduler leaves it Pending with reason Unschedulable.
+#
+# Expected kdiag diagnosis:
+#   root cause:  pod-unschedulable (classified as a resource shortage)
+#   chain:       pod-unschedulable → pod-not-ready → deployment-unavailable
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kdiag-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics
+  namespace: kdiag-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analytics
+  template:
+    metadata:
+      labels:
+        app: analytics
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27-alpine
+          resources:
+            requests:
+              cpu: "64" # BUG: no node has 64 allocatable CPUs

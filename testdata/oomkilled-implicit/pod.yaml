@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: worker-4b7c9-t2m8x
+  namespace: jobs
+  labels:
+    app: worker
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: ReplicaSet
+      name: worker-4b7c9
+      uid: rs-uid-6
+      controller: true
+spec:
+  containers:
+    - name: app
+      # The workload wraps its process in `sh -c`; the recorded Error/137 is
+      # deliberately ambiguous and must not be labeled a confirmed OOM kill.
+      command: ["sh", "-c", "exec-worker"]
+      image: worker:2.0
+      resources:
+        limits:
+          memory: 128Mi
+        requests:
+          memory: 64Mi
+status:
+  phase: Running
+  qosClass: Burstable
+  conditions:
+    - type: PodScheduled
+      status: "True"
+    - type: Ready
+      status: "False"
+      reason: ContainersNotReady
+      message: "containers with unready status: [app]"
+  containerStatuses:
+    - name: app
+      ready: false
+      restartCount: 4
+      image: worker:2.0
+      imageID: ""
+      containerID: ""
+      state:
+        waiting:
+          reason: CrashLoopBackOff
+          message: back-off 2m40s restarting failed container
+      lastState:
+        terminated:
+          reason: Error
+          exitCode: 137
+          startedAt: "2026-08-05T10:10:00Z"
+          finishedAt: "2026-08-05T10:12:00Z"
