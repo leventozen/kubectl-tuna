@@ -66,3 +66,33 @@ func TestCorrelationRequiresSameContainer(t *testing.T) {
 	Correlate([]*Finding{oom, crash}, g)
 	require.Equal(t, []*Finding{crash}, oom.Causes)
 }
+
+func TestReplicaOwnersRequireExactDeploymentReplicaSetPodPath(t *testing.T) {
+	depA := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"}
+	depB := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "worker"}
+	rsA := graph.ResourceRef{Kind: "ReplicaSet", Namespace: "ns", Name: "api-rs"}
+	rsB := graph.ResourceRef{Kind: "ReplicaSet", Namespace: "ns", Name: "worker-rs"}
+	podA := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api-1"}
+	podB := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "worker-1"}
+	standalonePod := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "manual"}
+	g := graph.New(depA)
+	for _, ref := range []graph.ResourceRef{depA, depB, rsA, rsB, podA, podB, standalonePod} {
+		g.AddNode(ref, struct{}{})
+	}
+	g.AddEdge(depA, rsA, graph.EdgeOwns)
+	g.AddEdge(rsA, podA, graph.EdgeOwns)
+	g.AddEdge(depB, rsB, graph.EdgeOwns)
+	g.AddEdge(rsB, podB, graph.EdgeOwns)
+
+	findings := []*Finding{
+		{ID: "f-1", Resource: podA},
+		{ID: "f-2", Resource: podB},
+		{ID: "f-3", Resource: standalonePod},
+		{ID: "f-4", Resource: depA},
+	}
+	owners := replicaOwners(findings, g)
+	require.Equal(t, depA, owners["f-1"])
+	require.Equal(t, depB, owners["f-2"])
+	require.NotContains(t, owners, "f-3")
+	require.NotContains(t, owners, "f-4")
+}

@@ -1,4 +1,4 @@
-.PHONY: build test vet e2e demo install-plugin release-snapshot demo-gif
+.PHONY: build test vet e2e demo install-plugin release-snapshot demo-output demo-gif
 
 PREFIX ?= $(HOME)/.local
 BIN_DIR ?= $(PREFIX)/bin
@@ -32,8 +32,12 @@ demo:
 release-snapshot:
 	goreleaser release --snapshot --clean
 
-# Regenerate docs/demo.gif (requires python3 + pillow)
-demo-gif:
+# Regenerate the deterministic fixture report used by the GIF.
+demo-output:
+	./scripts/render-demo.sh
+
+# Regenerate docs/demo.gif (requires python3; installs pinned Pillow in an ignored venv)
+demo-gif: demo-output
 	python3 -m venv .venv-gif
-	.venv-gif/bin/pip -q install pillow
+	.venv-gif/bin/pip -q install pillow==12.2.0
 	.venv-gif/bin/python scripts/generate-demo-gif.py

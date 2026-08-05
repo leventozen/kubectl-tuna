@@ -24,15 +24,16 @@ const (
 
 // Result is the full output of one inspection.
 type Result struct {
-	Focus      graph.ResourceRef       `json:"focus"`
-	Cluster    graph.ClusterInfo       `json:"cluster"`
-	Health     Health                  `json:"health"`
-	Findings   []*Finding              `json:"findings"`
-	RootCauses []*Finding              `json:"-"`
-	Standalone []*Finding              `json:"-"`
-	Partial    bool                    `json:"partial"`
-	Warnings   []graph.CollectionIssue `json:"warnings,omitempty"`
-	Rules      RuleEvaluationSummary   `json:"rules"`
+	Focus         graph.ResourceRef            `json:"focus"`
+	Cluster       graph.ClusterInfo            `json:"cluster"`
+	Health        Health                       `json:"health"`
+	Findings      []*Finding                   `json:"findings"`
+	RootCauses    []*Finding                   `json:"-"`
+	Standalone    []*Finding                   `json:"-"`
+	ReplicaOwners map[string]graph.ResourceRef `json:"-"`
+	Partial       bool                         `json:"partial"`
+	Warnings      []graph.CollectionIssue      `json:"warnings,omitempty"`
+	Rules         RuleEvaluationSummary        `json:"rules"`
 }
 
 type RuleSkip struct {
@@ -126,14 +127,15 @@ func (e *Engine) Evaluate(g *graph.Graph) *Result {
 	Correlate(findings, g)
 
 	res := &Result{
-		Focus:      g.Focus,
-		Cluster:    g.Cluster,
-		Health:     HealthOK,
-		Findings:   findings,
-		RootCauses: RootCauses(findings),
-		Standalone: Standalone(findings),
-		Warnings:   g.CollectionIssues(),
-		Rules:      ruleSummary,
+		Focus:         g.Focus,
+		Cluster:       g.Cluster,
+		Health:        HealthOK,
+		Findings:      findings,
+		RootCauses:    RootCauses(findings),
+		Standalone:    Standalone(findings),
+		ReplicaOwners: replicaOwners(findings, g),
+		Warnings:      g.CollectionIssues(),
+		Rules:         ruleSummary,
 	}
 	res.Warnings = append(res.Warnings, evaluationWarnings...)
 	if len(ruleSummary.Skipped) > 0 && !versionUnavailable {
@@ -172,6 +174,30 @@ func (e *Engine) Evaluate(g *graph.Graph) *Result {
 		}
 	}
 	return res
+}
+
+// replicaOwners returns the exact Deployment owner for Pod findings when the
+// graph proves Deployment --owns--> ReplicaSet --owns--> Pod. The map is
+// presentation-only: console output may group equivalent replicas, while JSON
+// keeps every original finding and causal edge unchanged.
+func replicaOwners(findings []*Finding, g *graph.Graph) map[string]graph.ResourceRef {
+	owners := make(map[string]graph.ResourceRef)
+	deployments := g.NodesOfKind("Deployment")
+	for _, finding := range findings {
+		if finding.ID == "" || finding.Resource.Kind != "Pod" {
+			continue
+		}
+		for _, deployment := range deployments {
+			if g.HasTypedPath(deployment.Ref, finding.Resource, graph.EdgeOwns, graph.EdgeOwns) {
+				owners[finding.ID] = deployment.Ref
+				break
+			}
+		}
+	}
+	if len(owners) == 0 {
+		return nil
+	}
+	return owners
 }
 
 func findingLess(a, b *Finding) bool {

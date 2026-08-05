@@ -3,6 +3,7 @@ package report
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,8 +25,9 @@ func TestJSONIncludesImpactSubjectAndPartialEvidence(t *testing.T) {
 			KubernetesVersion: "v1.36.2", Major: 1, Minor: 36,
 		},
 		Health: diag.HealthOK, Findings: []*diag.Finding{finding}, Standalone: []*diag.Finding{finding}, Partial: true,
-		Warnings: []graph.CollectionIssue{{Source: graph.SourceEvents, Resource: ref, Message: "forbidden"}},
-		Rules:    diag.RuleEvaluationSummary{Evaluated: 15},
+		ReplicaOwners: map[string]graph.ResourceRef{"f-1": {Kind: "Deployment", Namespace: "ns", Name: "api"}},
+		Warnings:      []graph.CollectionIssue{{Source: graph.SourceEvents, Resource: ref, Message: "forbidden"}},
+		Rules:         diag.RuleEvaluationSummary{Evaluated: 15},
 	}
 	var out bytes.Buffer
 	require.NoError(t, RenderJSON(&out, res))
@@ -40,6 +42,7 @@ func TestJSONIncludesImpactSubjectAndPartialEvidence(t *testing.T) {
 	require.Equal(t, "historical", got["impact"])
 	require.Equal(t, "container-oomkilled", got["ruleId"])
 	require.Equal(t, "app", got["subject"].(map[string]any)["container"])
+	require.NotContains(t, decoded, "replicaOwners", "presentation grouping must not change the JSON contract")
 }
 
 func TestConsoleShowsKubernetesVersionAndSkippedRule(t *testing.T) {
@@ -95,4 +98,79 @@ func TestConsoleUnknownExplainsUnavailableEvidence(t *testing.T) {
 	require.Contains(t, out.String(), "Health:    UNKNOWN")
 	require.Contains(t, out.String(), "Incomplete evidence")
 	require.Contains(t, out.String(), "Health could not be established")
+}
+
+func TestConsoleGroupsEquivalentOwnedReplicasWithoutDroppingEvidence(t *testing.T) {
+	dep := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"}
+	podA := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api-a"}
+	podB := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api-b"}
+	notReadyA := &diag.Finding{
+		ID: "f-3", RuleID: "pod-not-ready", Type: diag.PodNotReady,
+		Severity: diag.SeverityWarning, Confidence: diag.ConfidenceHigh, Impact: diag.ImpactCurrent,
+		Resource: podA, Summary: "Pod A is NotReady",
+	}
+	notReadyB := &diag.Finding{
+		ID: "f-4", RuleID: "pod-not-ready", Type: diag.PodNotReady,
+		Severity: diag.SeverityWarning, Confidence: diag.ConfidenceHigh, Impact: diag.ImpactCurrent,
+		Resource: podB, Summary: "Pod B is NotReady",
+	}
+	rootA := &diag.Finding{
+		ID: "f-1", RuleID: "crashloop-backoff", Type: diag.CrashLoopBackOff,
+		Severity: diag.SeverityCritical, Confidence: diag.ConfidenceHigh, Impact: diag.ImpactCurrent,
+		Resource: podA, Subject: &diag.Subject{Container: "app"}, Summary: "Container restarted 3 times",
+		Evidence:        []diag.Evidence{{Source: "restartCount", Value: "3"}},
+		Recommendations: []string{"Inspect previous logs."}, Causes: []*diag.Finding{notReadyA},
+	}
+	rootB := &diag.Finding{
+		ID: "f-2", RuleID: "crashloop-backoff", Type: diag.CrashLoopBackOff,
+		Severity: diag.SeverityCritical, Confidence: diag.ConfidenceHigh, Impact: diag.ImpactCurrent,
+		Resource: podB, Subject: &diag.Subject{Container: "app"}, Summary: "Container restarted 5 times",
+		Evidence:        []diag.Evidence{{Source: "restartCount", Value: "5"}},
+		Recommendations: []string{"Inspect previous logs."}, Causes: []*diag.Finding{notReadyB},
+	}
+	notReadyA.CausedBy = []*diag.Finding{rootA}
+	notReadyB.CausedBy = []*diag.Finding{rootB}
+	res := &diag.Result{
+		Focus: dep, Health: diag.HealthDegraded,
+		Findings:   []*diag.Finding{rootA, rootB, notReadyA, notReadyB},
+		RootCauses: []*diag.Finding{rootA, rootB},
+		ReplicaOwners: map[string]graph.ResourceRef{
+			"f-1": dep, "f-2": dep, "f-3": dep, "f-4": dep,
+		},
+	}
+
+	var out bytes.Buffer
+	(&ConsoleReporter{Out: &out}).Render(res)
+	rendered := out.String()
+	require.Contains(t, rendered, "crashloop-backoff × 2 replicas")
+	require.Contains(t, rendered, "owner Deployment/api (ns)")
+	require.Contains(t, rendered, "Pod/api-a (ns)")
+	require.Contains(t, rendered, "Pod/api-b (ns)")
+	require.Contains(t, rendered, "restartCount: 3")
+	require.Contains(t, rendered, "restartCount: 5")
+	require.Contains(t, rendered, "Causal chains by replica")
+	require.Contains(t, rendered, "pod-not-ready × 2 replicas")
+	require.Equal(t, 1, strings.Count(rendered, "Inspect previous logs."), "shared recommendation should render once")
+}
+
+func TestReplicaGroupingKeepsDifferentOwnersAndContainersSeparate(t *testing.T) {
+	depA := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"}
+	depB := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "worker"}
+	base := func(id, pod, container string) *diag.Finding {
+		return &diag.Finding{
+			ID: id, RuleID: "crashloop-backoff", Type: diag.CrashLoopBackOff,
+			Severity: diag.SeverityCritical, Confidence: diag.ConfidenceHigh, Impact: diag.ImpactCurrent,
+			Resource: graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: pod},
+			Subject:  &diag.Subject{Container: container},
+		}
+	}
+	findings := []*diag.Finding{
+		base("f-1", "api-a", "app"),
+		base("f-2", "api-b", "sidecar"),
+		base("f-3", "worker-a", "app"),
+	}
+	groups := groupReplicaFindings(findings, map[string]graph.ResourceRef{
+		"f-1": depA, "f-2": depA, "f-3": depB,
+	})
+	require.Len(t, groups, 3, "ownership and container identity are hard grouping boundaries")
 }

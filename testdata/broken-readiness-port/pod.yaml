@@ -17,7 +17,7 @@ spec:
       image: payment:1.0
       ports:
         - name: http
-          containerPort: 8081
+          containerPort: 80
       readinessProbe:
         httpGet:
           path: /health

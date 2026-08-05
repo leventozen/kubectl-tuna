@@ -15,7 +15,7 @@ Kubernetes relationship supports the causal step.
 ![kdiag diagnosing a Service with a causal chain](docs/demo.gif)
 
 ```console
-$ kubectl diag inspect service payment -n kdiag-demo
+$ kdiag inspect service payment -n kdiag-demo
 
 Kind:      Service
 Namespace: kdiag-demo
@@ -26,7 +26,7 @@ Health:    DEGRADED
 Root cause candidates
 
   [1] CRITICAL readiness-probe-port-mismatch  (confidence: high, impact: current)
-      Pod/payment-8db677cdd-d8fqm (kdiag-demo)
+      Pod/payment-7b889d-x8p2 (kdiag-demo)
       container/app
       Readiness probe of container "app" targets port 8080, but the container declares 80 (name: http)
 
@@ -258,10 +258,13 @@ still route to them when every available endpoint is terminating.
 ### 7. Render the evidence and exit predictably
 
 The console groups root candidates, causal chains, propagated symptoms, other
-findings, skipped rules, and incomplete evidence. JSON flattens causal links to
-finding IDs so consumers do not need to parse console text. Exit status is
-based on focus health: `0` for healthy, `2` for degraded, and `1` for unknown
-or command/API failure.
+findings, skipped rules, and incomplete evidence. Equivalent Pod findings are
+collapsed only when an exact Deployment→ReplicaSet→Pod ownership path, the
+same container identity, and the same causal shape are present; each affected
+Pod remains visible, and full grouped findings retain evidence per Pod. JSON is
+never grouped and keeps every finding, evidence item, and causal link by ID.
+Exit status is based on focus health: `0` for healthy, `2` for degraded, and
+`1` for unknown or command/API failure.
 
 The implementation is split along the same boundaries:
 

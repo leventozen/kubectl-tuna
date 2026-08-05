@@ -104,8 +104,10 @@ Still required:
   request no Secret permissions. A future opt-in metadata-only experiment must
   remain outside the default RBAC contract and prove that it never decodes
   payload data.
-- [ ] Group equivalent replica-level findings for human output without losing
-  per-Pod evidence or corrupting JSON causality.
+- [x] Group equivalent replica-level findings in console output only when an
+  exact Deployment→ReplicaSet→Pod path, container identity, and causal shape
+  match. Keep every affected Pod visible and preserve per-Pod evidence in full
+  grouped findings; JSON findings, evidence, and causal IDs remain unchanged.
 - [x] Refactor CLI exit handling so health-to-status mapping is unit-testable
   without `os.Exit` in the diagnostic execution path.
 - [x] Bound version discovery by the inspection context and cover version

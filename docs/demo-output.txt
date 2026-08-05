@@ -7,31 +7,31 @@ Health:    DEGRADED
 Root cause candidates
 
   [1] CRITICAL readiness-probe-port-mismatch  (confidence: high, impact: current)
-      Pod/payment-8db677cdd-d8fqm (kdiag-demo)
+      Pod/payment-7b889d-x8p2 (kdiag-demo)
       container/app
       Readiness probe of container "app" targets port 8080, but the container declares 80 (name: http)
 
     Evidence:
       - container[app].readinessProbe (httpGet): port 8080
       - container[app].ports: 80 (name: http)
-      - events (reason: Unhealthy): matching readiness probe failure (14 occurrence(s)): Readiness probe failed: Get "http://10.244.0.6:8080/": dial tcp 10.244.0.6:8080: connect: connection refused
+      - events (reason: Unhealthy): matching readiness probe failure (37 occurrence(s)): Readiness probe failed: Get "http://10.244.1.5:8080/health": dial tcp 10.244.1.5:8080: connect: connection refused
 
     Recommendations:
       - Point the readiness probe at a port container "app" actually listens on.
       - Verify the listening port inside the container: kubectl exec ... -- ss -lntp
 
     Causal chain:
-      readiness-probe-port-mismatch  Pod/payment-8db677cdd-d8fqm (kdiag-demo)
-        → readiness-probe-failing  Pod/payment-8db677cdd-d8fqm (kdiag-demo)
-          → pod-not-ready  Pod/payment-8db677cdd-d8fqm (kdiag-demo)
+      readiness-probe-port-mismatch  Pod/payment-7b889d-x8p2 (kdiag-demo)
+        → readiness-probe-failing  Pod/payment-7b889d-x8p2 (kdiag-demo)
+          → pod-not-ready  Pod/payment-7b889d-x8p2 (kdiag-demo)
             → service-no-ready-endpoints  Service/payment (kdiag-demo)
 
 Propagated symptoms (explained by the causes above)
   - WARNING deployment-unavailable  Deployment/payment (kdiag-demo)
     Deployment has 0/1 available replicas
-  - WARNING pod-not-ready  Pod/payment-8db677cdd-d8fqm (kdiag-demo)
+  - WARNING pod-not-ready  Pod/payment-7b889d-x8p2 (kdiag-demo)
     Pod is Running and NotReady (0/1 containers ready)
-  - WARNING readiness-probe-failing  Pod/payment-8db677cdd-d8fqm (kdiag-demo)
+  - WARNING readiness-probe-failing  Pod/payment-7b889d-x8p2 (kdiag-demo)
     Readiness probe is failing, keeping the Pod NotReady
   - CRITICAL service-no-ready-endpoints  Service/payment (kdiag-demo)
     Service port "http" (80/TCP) has zero endpoints eligible for regular traffic
