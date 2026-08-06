@@ -10,6 +10,7 @@ package kube
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -36,12 +37,14 @@ func NewCollector(client kubernetes.Interface) *Collector {
 // chain (ReplicaSet → Deployment), EndpointSlices, referenced ConfigMaps and
 // Secret references, and related events. Secret payloads are never fetched.
 func (c *Collector) CollectService(ctx context.Context, namespace, name string) (*graph.Graph, error) {
+	startedAt := time.Now()
 	svc, err := c.client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("get service %s/%s: %w", namespace, name, err)
 	}
 	svcRef := graph.ResourceRef{Kind: "Service", Namespace: namespace, Name: name}
 	g := graph.New(svcRef)
+	g.BeginCollection(startedAt, svc)
 	g.AddNode(svcRef, svc)
 	c.collectClusterInfo(ctx, g)
 
@@ -84,6 +87,9 @@ func (c *Collector) CollectService(ctx context.Context, namespace, name string) 
 	}
 
 	c.collectEvents(ctx, g, namespace)
+	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
+		return c.client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
+	})
 	return g, nil
 }
 
@@ -92,12 +98,14 @@ func (c *Collector) CollectService(ctx context.Context, namespace, name string) 
 // ConfigMaps and Secret references, and related events. Secret payloads are
 // never fetched.
 func (c *Collector) CollectDeployment(ctx context.Context, namespace, name string) (*graph.Graph, error) {
+	startedAt := time.Now()
 	dep, err := c.client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("get deployment %s/%s: %w", namespace, name, err)
 	}
 	depRef := graph.ResourceRef{Kind: "Deployment", Namespace: namespace, Name: name}
 	g := graph.New(depRef)
+	g.BeginCollection(startedAt, dep)
 	g.AddNode(depRef, dep)
 	c.collectClusterInfo(ctx, g)
 
@@ -205,6 +213,9 @@ func (c *Collector) CollectDeployment(ctx context.Context, namespace, name strin
 	}
 
 	c.collectEvents(ctx, g, namespace)
+	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
+		return c.client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	})
 	return g, nil
 }
 
@@ -282,12 +293,14 @@ func (c *Collector) addPod(ctx context.Context, g *graph.Graph, pod *corev1.Pod)
 // it runs on, ConfigMap/Secret references, Services selecting it (plus
 // their EndpointSlices), and related events.
 func (c *Collector) CollectPod(ctx context.Context, namespace, name string) (*graph.Graph, error) {
+	startedAt := time.Now()
 	pod, err := c.client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("get pod %s/%s: %w", namespace, name, err)
 	}
 	podRef := graph.ResourceRef{Kind: "Pod", Namespace: namespace, Name: name}
 	g := graph.New(podRef)
+	g.BeginCollection(startedAt, pod)
 	c.addPod(ctx, g, pod)
 	c.collectClusterInfo(ctx, g)
 
@@ -329,7 +342,86 @@ func (c *Collector) CollectPod(ctx context.Context, namespace, name string) (*gr
 	}
 
 	c.collectEvents(ctx, g, namespace)
+	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
+		return c.client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
+	})
 	return g, nil
+}
+
+// finishFocusCollection performs a final read of the focus resource. Kubernetes
+// does not provide an atomic snapshot across the different resource kinds in
+// the graph, but a changed focus revision is concrete proof that the collected
+// evidence spans a transition. In that case the engine must not present rules
+// evaluated over the mixed-time graph as a diagnosis.
+func (c *Collector) finishFocusCollection(
+	ctx context.Context,
+	g *graph.Graph,
+	get func(context.Context) (metav1.Object, error),
+) {
+	latest, err := get(ctx)
+	if err != nil {
+		g.FinishCollection(time.Now(), nil)
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourceTemporalIntegrity, Resource: g.Focus,
+			Message:       fmt.Sprintf("could not verify that the focus resource stayed unchanged during collection: %v", err),
+			AffectsHealth: true,
+		})
+		return
+	}
+
+	stability := g.FinishCollection(time.Now(), latest)
+	if stability == graph.FocusStabilityChanged {
+		start := g.Collection.FocusStart
+		end := *g.Collection.FocusEnd
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourceTemporalIntegrity, Resource: g.Focus,
+			Message: fmt.Sprintf(
+				"focus resource identity or revision changed during collection (resourceVersion %q -> %q, generation %d -> %d)",
+				start.ResourceVersion, end.ResourceVersion, start.Generation, end.Generation,
+			),
+			AffectsHealth: true,
+		})
+		return
+	}
+
+	validateControllerFreshness(g)
+}
+
+// validateControllerFreshness covers both focused and related workload
+// controllers retained in the graph. Their status fields describe the
+// generation the controller has processed. Evaluating rollout or availability
+// state from an older generation would turn a normal reconciliation window
+// into an apparently confident diagnosis.
+func validateControllerFreshness(g *graph.Graph) {
+	for _, node := range g.NodesOfKind("Deployment") {
+		dep, ok := node.Object.(*appsv1.Deployment)
+		if !ok || dep.Generation <= 0 || dep.Status.ObservedGeneration >= dep.Generation {
+			continue
+		}
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourceTemporalIntegrity, Resource: node.Ref,
+			Message: fmt.Sprintf(
+				"Deployment controller has observed generation %d, behind metadata.generation %d",
+				dep.Status.ObservedGeneration, dep.Generation,
+			),
+			AffectsHealth: true,
+		})
+	}
+
+	for _, node := range g.NodesOfKind("ReplicaSet") {
+		rs, ok := node.Object.(*appsv1.ReplicaSet)
+		if !ok || rs.Generation <= 0 || rs.Status.ObservedGeneration >= rs.Generation {
+			continue
+		}
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourceTemporalIntegrity, Resource: node.Ref,
+			Message: fmt.Sprintf(
+				"ReplicaSet controller has observed generation %d, behind metadata.generation %d",
+				rs.Status.ObservedGeneration, rs.Generation,
+			),
+			AffectsHealth: true,
+		})
+	}
 }
 
 // collectClusterInfo records the API server version used to interpret rule

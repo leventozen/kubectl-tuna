@@ -80,6 +80,185 @@ func TestCanceledFocusRequestRemainsACommandError(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestFocusRevisionChangeSuspendsDiagnosticRules(t *testing.T) {
+	pod := readyPod("api-1")
+	pod.UID = "pod-uid"
+	pod.ResourceVersion = "10"
+	pod.Status.Conditions[0].Status = corev1.ConditionFalse
+	client := fakeClient()
+	gets := 0
+	client.PrependReactor("get", "pods", func(action clienttesting.Action) (bool, runtime.Object, error) {
+		if action.(clienttesting.GetAction).GetName() != pod.Name {
+			return false, nil, nil
+		}
+		gets++
+		observed := pod.DeepCopy()
+		if gets == 2 {
+			observed.ResourceVersion = "11"
+		}
+		return true, observed, nil
+	})
+
+	g, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", pod.Name)
+	require.NoError(t, err)
+	require.Equal(t, graph.FocusStabilityChanged, g.Collection.FocusStability)
+
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthUnknown, res.Health)
+	require.Empty(t, res.Findings, "mixed-time evidence must not be evaluated")
+	require.Zero(t, res.Rules.Evaluated)
+	require.NotEmpty(t, res.Rules.SuspendedReason)
+	require.True(t, hasWarningSource(res, graph.SourceTemporalIntegrity))
+}
+
+func TestFocusRevisionRecheckFailureSuspendsDiagnosticRules(t *testing.T) {
+	pod := readyPod("api-1")
+	pod.ResourceVersion = "10"
+	client := fakeClient()
+	gets := 0
+	client.PrependReactor("get", "pods", func(clienttesting.Action) (bool, runtime.Object, error) {
+		gets++
+		if gets == 1 {
+			return true, pod.DeepCopy(), nil
+		}
+		return true, nil, errors.New("recheck forbidden")
+	})
+
+	g, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", pod.Name)
+	require.NoError(t, err)
+	require.Equal(t, graph.FocusStabilityUnknown, g.Collection.FocusStability)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthUnknown, res.Health)
+	require.Empty(t, res.Findings)
+	require.True(t, hasWarningSource(res, graph.SourceTemporalIntegrity))
+}
+
+func TestStaleDeploymentObservedGenerationSuspendsDiagnosticRules(t *testing.T) {
+	replicas := int32(1)
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "api", Namespace: "ns", UID: "dep-uid", ResourceVersion: "10", Generation: 4,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
+		},
+		Status: appsv1.DeploymentStatus{ObservedGeneration: 3},
+	}
+	client := fakeClient(dep)
+
+	g, err := kube.NewCollector(client).CollectDeployment(context.Background(), "ns", "api")
+	require.NoError(t, err)
+	require.Equal(t, graph.FocusStabilityStable, g.Collection.FocusStability)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthUnknown, res.Health)
+	require.Empty(t, res.Findings)
+	require.Contains(t, res.Rules.SuspendedReason, "controller freshness")
+	require.True(t, hasWarningSource(res, graph.SourceTemporalIntegrity))
+}
+
+func TestStaleRelatedDeploymentSuspendsServiceDiagnosis(t *testing.T) {
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "api", Namespace: "ns", UID: "svc-uid", ResourceVersion: "20",
+		},
+		Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "api"}},
+	}
+	pod := readyPod("api-1")
+	pod.UID = "pod-uid"
+	pod.OwnerReferences = []metav1.OwnerReference{{Kind: "ReplicaSet", Name: "api-rs", UID: "rs-uid"}}
+	rs := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "api-rs", Namespace: "ns", UID: "rs-uid", Generation: 1,
+			OwnerReferences: []metav1.OwnerReference{{Kind: "Deployment", Name: "api", UID: "dep-uid"}},
+		},
+		Status: appsv1.ReplicaSetStatus{ObservedGeneration: 1},
+	}
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns", UID: "dep-uid", Generation: 2},
+		Status:     appsv1.DeploymentStatus{ObservedGeneration: 1},
+	}
+	client := fakeClient(svc, pod, rs, dep)
+
+	g, err := kube.NewCollector(client).CollectService(context.Background(), "ns", "api")
+	require.NoError(t, err)
+	require.Equal(t, graph.FocusStabilityStable, g.Collection.FocusStability)
+	res := diag.NewEngine().Evaluate(g)
+
+	require.Equal(t, diag.HealthUnknown, res.Health)
+	require.Empty(t, res.Findings)
+	require.True(t, hasWarningForResource(res, graph.SourceTemporalIntegrity, graph.ResourceRef{
+		Kind: "Deployment", Namespace: "ns", Name: "api",
+	}))
+}
+
+func TestStaleRelatedReplicaSetSuspendsDeploymentDiagnosis(t *testing.T) {
+	replicas := int32(1)
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "api", Namespace: "ns", UID: "dep-uid", ResourceVersion: "20", Generation: 2,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
+		},
+		Status: appsv1.DeploymentStatus{ObservedGeneration: 2},
+	}
+	rs := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "api-rs", Namespace: "ns", UID: "rs-uid", Generation: 3,
+			Labels:          map[string]string{"app": "api"},
+			OwnerReferences: []metav1.OwnerReference{{Kind: "Deployment", Name: "api", UID: "dep-uid"}},
+		},
+		Status: appsv1.ReplicaSetStatus{ObservedGeneration: 2},
+	}
+	client := fakeClient(dep, rs)
+
+	g, err := kube.NewCollector(client).CollectDeployment(context.Background(), "ns", "api")
+	require.NoError(t, err)
+	res := diag.NewEngine().Evaluate(g)
+
+	require.Equal(t, diag.HealthUnknown, res.Health)
+	require.Empty(t, res.Findings)
+	require.True(t, hasWarningForResource(res, graph.SourceTemporalIntegrity, graph.ResourceRef{
+		Kind: "ReplicaSet", Namespace: "ns", Name: "api-rs",
+	}))
+}
+
+func TestFreshRelatedControllersAllowRuleEvaluation(t *testing.T) {
+	replicas := int32(1)
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "api", Namespace: "ns", UID: "dep-uid", ResourceVersion: "20", Generation: 2,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
+		},
+		Status: appsv1.DeploymentStatus{
+			ObservedGeneration: 2, AvailableReplicas: 1, ReadyReplicas: 1, UpdatedReplicas: 1,
+		},
+	}
+	rs := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "api-rs", Namespace: "ns", UID: "rs-uid", Generation: 3,
+			Labels:          map[string]string{"app": "api"},
+			OwnerReferences: []metav1.OwnerReference{{Kind: "Deployment", Name: "api", UID: "dep-uid"}},
+		},
+		Status: appsv1.ReplicaSetStatus{ObservedGeneration: 3},
+	}
+	client := fakeClient(dep, rs)
+
+	g, err := kube.NewCollector(client).CollectDeployment(context.Background(), "ns", "api")
+	require.NoError(t, err)
+	res := diag.NewEngine().Evaluate(g)
+
+	require.Equal(t, diag.HealthOK, res.Health)
+	require.Equal(t, len(diag.DefaultRuleRegistrations()), res.Rules.Evaluated)
+	require.Empty(t, res.Rules.SuspendedReason)
+	require.False(t, hasWarningSource(res, graph.SourceTemporalIntegrity))
+}
+
 func TestEventsAreListedOnlyForRelatedNonReadyPodsWithFieldSelector(t *testing.T) {
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns"},
@@ -330,6 +509,15 @@ func collectorTestEndpointPorts() []discoveryv1.EndpointPort {
 func hasWarningSource(res *diag.Result, source string) bool {
 	for _, warning := range res.Warnings {
 		if warning.Source == source {
+			return true
+		}
+	}
+	return false
+}
+
+func hasWarningForResource(res *diag.Result, source string, ref graph.ResourceRef) bool {
+	for _, warning := range res.Warnings {
+		if warning.Source == source && warning.Resource == ref {
 			return true
 		}
 	}

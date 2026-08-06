@@ -15,6 +15,15 @@ is checked against each rule's reviewed compatibility range. If version
 discovery fails, version-scoped rules are skipped and health is `unknown`
 unless other collected evidence already proves a current focus problem.
 
+The focus Service, Deployment, or Pod is fetched at both the beginning and end
+of collection using the same `get` permission. The second read verifies its
+UID, `resourceVersion`, and `generation`. If the read fails or the revision
+changed, rule evaluation is suspended because the related evidence is known or
+could be mixed across a transition. Every collected Deployment and ReplicaSet
+is also required to have `status.observedGeneration` at least as new as
+`metadata.generation`; this applies to related owner controllers as well as a
+Deployment focus and does not add API calls or permissions.
+
 | API group | Resource | Verbs | Why |
 |---|---|---|---|
 | core | `services` | `get`, `list` | fetch a Service focus; discover Services selecting a Pod/workload |
@@ -163,7 +172,12 @@ supports a reliable query.
 
 ## Failure semantics
 
-- Failure to fetch the focus object is a command error.
+- Failure to fetch the focus object initially is a command error. Failure to
+  re-read it after related collection is health-blocking incomplete evidence;
+  rules are suspended and health is `unknown`.
+- A changed focus identity/revision or stale collected Deployment/ReplicaSet
+  generation suspends rule evaluation instead of turning a reconciliation
+  window into a diagnosis.
 - Failure to determine the API server version skips version-scoped rules and is
   health-blocking incomplete evidence.
 - EndpointSlice failure for a Service focus makes health `unknown` because

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -98,6 +99,49 @@ func TestConsoleUnknownExplainsUnavailableEvidence(t *testing.T) {
 	require.Contains(t, out.String(), "Health:    UNKNOWN")
 	require.Contains(t, out.String(), "Incomplete evidence")
 	require.Contains(t, out.String(), "Health could not be established")
+}
+
+func TestJSONIncludesCollectionBoundsAndFocusStability(t *testing.T) {
+	ref := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
+	started := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	endRevision := graph.FocusRevision{ResourceVersion: "11", Generation: 2}
+	res := &diag.Result{
+		Focus: ref,
+		Collection: &graph.CollectionInfo{
+			StartedAt: started, CompletedAt: started.Add(time.Second),
+			FocusStart: graph.FocusRevision{ResourceVersion: "10", Generation: 1},
+			FocusEnd:   &endRevision, FocusStability: graph.FocusStabilityChanged,
+		},
+		Health: diag.HealthUnknown,
+	}
+
+	var out bytes.Buffer
+	require.NoError(t, RenderJSON(&out, res))
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(out.Bytes(), &decoded))
+	collection := decoded["collection"].(map[string]any)
+	require.Equal(t, "changed", collection["focusStability"])
+	require.Equal(t, "10", collection["focusStart"].(map[string]any)["resourceVersion"])
+	require.Equal(t, "11", collection["focusEnd"].(map[string]any)["resourceVersion"])
+}
+
+func TestConsoleExplainsSuspendedRuleEvaluation(t *testing.T) {
+	ref := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
+	res := &diag.Result{
+		Focus: ref, Health: diag.HealthUnknown, Partial: true,
+		Warnings: []graph.CollectionIssue{{
+			Source: graph.SourceTemporalIntegrity, Resource: ref,
+			Message: "focus changed", AffectsHealth: true,
+		}},
+		Rules: diag.RuleEvaluationSummary{
+			SuspendedReason: "resource stability or controller freshness was not established for the collected graph",
+		},
+	}
+
+	var out bytes.Buffer
+	(&ConsoleReporter{Out: &out}).Render(res)
+	require.Contains(t, out.String(), "Rule evaluation suspended")
+	require.Contains(t, out.String(), "temporal integrity not established")
 }
 
 func TestConsoleGroupsEquivalentOwnedReplicasWithoutDroppingEvidence(t *testing.T) {

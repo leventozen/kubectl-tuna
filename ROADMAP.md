@@ -30,6 +30,27 @@ symptom, and evidence kdiag could not collect.
    component skew, or unavailable capability is not assumed equivalent.
 8. Extensibility must not let third-party rules bypass evidence, causality,
    data-access, timeout, or provenance boundaries.
+9. Multi-object collection is not an atomic Kubernetes snapshot. Collection
+   time bounds, focus-resource stability, and controller freshness must be
+   visible; proven transition windows suspend diagnosis instead of producing a
+   mixed-time causal chain.
+
+## Current execution order
+
+The latest trust audit puts evidence quality ahead of new resource families or
+external rule formats:
+
+1. Define and benchmark the remaining bounded stability policy for related Pods
+   and EndpointSlices. Focus revision and related Deployment/ReplicaSet
+   controller freshness are now covered.
+2. Measure the remaining namespace-wide Service scan and large-namespace
+   latency/partial-result behavior.
+3. Build a labeled corpus with at least 25 realistic cases, including at least
+   10 healthy/recovered controls and positive/negative coverage for every rule.
+4. Validate results with 3–5 external operators and turn every wrong or missed
+   diagnosis into a regression case.
+5. Stabilize the JSON/evidence contract only after the corpus exposes which
+   fields integrations actually need; external rule packs remain later.
 
 ## Gate A — Reliability baseline (in progress)
 
@@ -99,7 +120,10 @@ Still required:
 - [ ] Measure and reduce the remaining namespace-wide Service list used for
   reverse selector discovery on Deployment and Pod entry points. Kubernetes
   exposes no reliable server-side query over `Service.spec.selector`, so a
-  narrower implementation must not approximate with metadata labels.
+  narrower implementation must not approximate with metadata labels. Record
+  API call count, payload size, collection duration, and timeout/partial
+  behavior against small and large synthetic namespaces before choosing an
+  optimization.
 - [x] Keep Secret existence permanently `unknown` in the default collector and
   request no Secret permissions. A future opt-in metadata-only experiment must
   remain outside the default RBAC contract and prove that it never decodes
@@ -112,6 +136,20 @@ Still required:
   without `os.Exit` in the diagnostic execution path.
 - [x] Bound version discovery by the inspection context and cover version
   deadline, canceled focus request, and throttled EndpointSlice behavior.
+- [x] Record live collection start/end timestamps and the focus resource's
+  start/end `resourceVersion` and `generation` in JSON.
+- [x] Re-read the focus resource after collecting related evidence. If its
+  identity/revision changed, or the final read cannot establish stability,
+  suspend all rule evaluation and return explicit `unknown` health.
+- [x] Suspend all rule evaluation while any collected Deployment or ReplicaSet
+  has `status.observedGeneration < metadata.generation`; this covers related
+  owner controllers as well as a Deployment focus. An unobserved spec update is
+  a controller transition, not evidence of an unavailable or stuck rollout.
+- [ ] Define and test a bounded temporal-integrity policy for related Pods and
+  EndpointSlices. Focus stability plus controller freshness is useful evidence
+  but is not an atomic multi-resource snapshot and must not be described as
+  one. Compare the cost and permission impact of bounded second LISTs before
+  adding extra requests or `watch` access.
 
 Gate A passes only when there are no known factually invalid rules, no known
 cross-resource false causal edges, and every missing evidence source is visible
@@ -126,16 +164,26 @@ whether the model survives Kubernetes behavior it was not authored around.
   expected type appears somewhere.
 - [x] Add healthy and recovery e2e cases so the suite measures false positives,
   not only detection.
-- [ ] Run the full healthy, broken, and recovery e2e suite against every minor
+- [x] Run the full healthy, broken, and recovery e2e suite against every minor
   in the provisional window. Today that means 1.34, 1.35, and 1.36; keep it a
-  rolling window aligned with maintained Kubernetes release branches.
+  rolling window aligned with maintained Kubernetes release branches. The
+  configured matrix was observed green on both initial and follow-up `main`
+  workflow runs.
 - [x] Configure CI with Kind v0.32.0 digest-pinned images for Kubernetes 1.34.8,
   1.35.5, and 1.36.1, running the exact same e2e contract on each. The gate
-  remains open until those jobs are observed green and kept green.
-- [ ] Record the exact API server version, Node kubelet versions, container
-  runtime, and distribution for every corpus/e2e case.
+  is now mechanically green; corpus precision and environment diversity remain
+  open and are not implied by that result.
+- [ ] Persist the exact API server version, Node kubelet versions, container
+  runtime, and distribution as machine-readable artifacts for every
+  corpus/e2e case. CI logs already print API server, kubelet, and runtime data;
+  durable case metadata remains open.
 - [ ] Create a sanitized corpus of real `get/describe/events` snapshots,
-  including incomplete RBAC and stale-event cases.
+  including incomplete RBAC, stale-event, active-rollout, and focus-change
+  cases. Start with at least 25 labeled cases and at least 10 healthy/recovered
+  controls.
+- [ ] Give every registered rule at least one positive and one meaningful
+  negative real-cluster/corpus case; fixtures alone do not validate Kubernetes
+  behavior outside the author's assumptions.
 - [ ] Maintain a regression case for every reported wrong or missed diagnosis.
 - [ ] Record rule precision by corpus case. Do not market a global accuracy
   percentage without a representative labeled dataset.
@@ -143,6 +191,9 @@ whether the model survives Kubernetes behavior it was not authored around.
   Pods, multiple ReplicaSets, and mixed-version rollouts.
 - [ ] Add explicit mixed kubelet-version cases; API server version alone cannot
   establish component-level semantics during upgrades.
+- [ ] Run a structured field trial with 3–5 external operators on clusters the
+  author did not construct; record useful chains, false roots, misses, partial
+  evidence, collection duration, and whether kdiag shortened diagnosis time.
 
 Gate B passes when the known corpus has no high-confidence false root cause,
 healthy/recovered cases remain healthy, and at least a small number of external
@@ -155,7 +206,8 @@ better integration surface than prematurely building a TUI or AI layer.
 
 - [ ] Publish a JSON Schema with explicit schema versioning.
 - [ ] Stabilize resource references, subject/component identity, impact,
-  confidence, evidence, partial warnings, and causal-edge representation.
+  confidence, evidence, partial warnings, collection bounds/focus stability,
+  rule suspension, and causal-edge representation.
 - [ ] Add golden compatibility tests and document which fields are stable.
 - [ ] Add rule metadata (ID, family, trigger, evidence requirements, causal
   predicates, compatibility/capability requirements) and generate the rule
@@ -218,6 +270,9 @@ Only after Gates A and B, and the stable core of Gate C:
 - [ ] Add security, support, contributing, compatibility, and RBAC documents.
 - [ ] Cut the first explicitly pre-1.0 preview tag.
 - [ ] Validate release artifacts on Linux and macOS before publishing them.
+- [ ] Document and CI-test the contributor/source-install Go toolchain policy;
+  binary releases should prevent the current new compiler requirement from
+  becoming unnecessary end-user friction.
 - [ ] Submit to Krew only after the binary and name are stable enough that
   discovery does not amplify a misleading tool.
 
@@ -256,6 +311,8 @@ These are not current work:
 | Version ranges fail closed | API stability reduces risk but does not prove unchanged diagnostics, feature gates, events, or component behavior. |
 | In-tree registry before external packs | Contributors can improve coverage now without freezing an unsafe public execution contract. |
 | No native Go plugins | ABI fragility and in-process access to cluster credentials are unacceptable extension boundaries. |
+| Suspend on focus transition or stale Deployment generation | Sequential GET/LIST calls can span a rollout; mixed-time evidence cannot support a trust-first diagnosis. |
+| Focus stability is not an atomic snapshot claim | Kubernetes does not provide a single transaction across the resource kinds kdiag reads; related-resource temporal policy remains an explicit open gate. |
 
 ## Success signals
 

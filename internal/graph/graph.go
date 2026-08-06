@@ -9,6 +9,8 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	utilversion "k8s.io/apimachinery/pkg/util/version"
 )
 
@@ -83,6 +85,7 @@ const (
 	SourceConfigMap         = "configmap"
 	SourceSecret            = "secret"
 	SourceServerVersion     = "kubernetes-version"
+	SourceTemporalIntegrity = "temporal-integrity"
 	SourceRuleCompatibility = "rule-compatibility"
 	SourceRuleExecution     = "rule-execution"
 )
@@ -96,6 +99,35 @@ type ClusterInfo struct {
 	Minor             uint   `json:"minor,omitempty"`
 }
 
+// FocusRevision records the Kubernetes concurrency fields observed for the
+// focus resource. ResourceVersion changes on any persisted object update;
+// Generation changes when the desired specification changes.
+type FocusRevision struct {
+	ResourceVersion string `json:"resourceVersion,omitempty"`
+	Generation      int64  `json:"generation,omitempty"`
+}
+
+// FocusStability describes whether the focus resource stayed unchanged while
+// related evidence was collected. It deliberately does not claim that all
+// Kubernetes resource kinds form an atomic cluster-wide snapshot.
+type FocusStability string
+
+const (
+	FocusStabilityUnknown FocusStability = "unknown"
+	FocusStabilityStable  FocusStability = "stable"
+	FocusStabilityChanged FocusStability = "changed"
+)
+
+// CollectionInfo bounds a live inspection in time and records the focus
+// revision at both ends. Synthetic graphs leave this nil.
+type CollectionInfo struct {
+	StartedAt      time.Time      `json:"startedAt"`
+	CompletedAt    time.Time      `json:"completedAt"`
+	FocusStart     FocusRevision  `json:"focusStart"`
+	FocusEnd       *FocusRevision `json:"focusEnd,omitempty"`
+	FocusStability FocusStability `json:"focusStability"`
+}
+
 // Graph is a small in-memory resource relationship graph built around a
 // single focus resource (the resource the user asked kdiag to inspect).
 type Graph struct {
@@ -104,11 +136,16 @@ type Graph struct {
 	// collectors always attempt version discovery and record a collection issue
 	// when it fails.
 	Cluster ClusterInfo
+	// Collection is present for live collectors and records bounded temporal
+	// evidence about the focus resource. It is not an atomic cluster snapshot.
+	Collection *CollectionInfo
 
-	nodes  map[string]*Node
-	edges  []Edge
-	events []corev1.Event
-	issues []CollectionIssue
+	nodes           map[string]*Node
+	edges           []Edge
+	events          []corev1.Event
+	issues          []CollectionIssue
+	collectionUID   types.UID
+	collectionStart FocusRevision
 }
 
 // SetKubernetesVersion parses and records the API server's reported version.
@@ -142,6 +179,54 @@ func New(focus ResourceRef) *Graph {
 		Focus: focus,
 		nodes: map[string]*Node{},
 	}
+}
+
+// BeginCollection records when a live collection began and the first observed
+// revision of its focus resource.
+func (g *Graph) BeginCollection(startedAt time.Time, focus metav1.Object) {
+	revision := focusRevision(focus)
+	g.collectionUID = focus.GetUID()
+	g.collectionStart = revision
+	g.Collection = &CollectionInfo{
+		StartedAt:      startedAt.UTC(),
+		FocusStart:     revision,
+		FocusStability: FocusStabilityUnknown,
+	}
+}
+
+// FinishCollection records the final focus revision and reports whether it is
+// identical to the initial observation. A nil focus means the final read could
+// not establish stability.
+func (g *Graph) FinishCollection(completedAt time.Time, focus metav1.Object) FocusStability {
+	if g.Collection == nil {
+		g.Collection = &CollectionInfo{
+			StartedAt: completedAt.UTC(), CompletedAt: completedAt.UTC(),
+			FocusStability: FocusStabilityUnknown,
+		}
+		if focus != nil {
+			revision := focusRevision(focus)
+			g.Collection.FocusEnd = &revision
+		}
+		return FocusStabilityUnknown
+	}
+	g.Collection.CompletedAt = completedAt.UTC()
+	if focus == nil {
+		g.Collection.FocusStability = FocusStabilityUnknown
+		return FocusStabilityUnknown
+	}
+
+	revision := focusRevision(focus)
+	g.Collection.FocusEnd = &revision
+	if focus.GetUID() == g.collectionUID && revision == g.collectionStart {
+		g.Collection.FocusStability = FocusStabilityStable
+		return FocusStabilityStable
+	}
+	g.Collection.FocusStability = FocusStabilityChanged
+	return FocusStabilityChanged
+}
+
+func focusRevision(obj metav1.Object) FocusRevision {
+	return FocusRevision{ResourceVersion: obj.GetResourceVersion(), Generation: obj.GetGeneration()}
 }
 
 // AddNode inserts or replaces a node. Adding a node with a non-nil object

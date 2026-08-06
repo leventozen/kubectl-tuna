@@ -12,6 +12,10 @@ builds a small relationship graph around the resource being inspected,
 evaluates deterministic rules, and links findings only when a specific
 Kubernetes relationship supports the causal step.
 
+**Local by design:** at runtime kdiag requires no LLM, API key, SaaS backend,
+telemetry endpoint, update service, or third-party outbound connection. It only
+communicates with the Kubernetes API configured by the operator.
+
 ![kdiag diagnosing a Service with a causal chain](docs/demo.gif)
 
 ```console
@@ -62,6 +66,23 @@ kubectl diag inspect service payment -n finance
 `make install-plugin` only installs a locally built binary. It does not publish
 anything.
 
+## Network and data boundary
+
+Once the binary is available, kdiag runs without calling an external service.
+At runtime it sends read-only requests only to the Kubernetes API selected by
+the operator's kubeconfig. It does not send cluster evidence to an LLM, SaaS
+backend, telemetry collector, update server, or other third-party endpoint.
+In an air-gapped or restricted network, kdiag itself therefore requires no
+Internet connection at runtime when the cluster API and required authentication
+services are reachable inside that boundary.
+
+This is deliberately a runtime claim, not a promise that every surrounding
+workflow is offline. The Kubernetes API must still be reachable and the
+credentials must be valid. Cloud or SSO credential plugins may contact their
+own provider endpoints to obtain or refresh a token. Building kdiag from source
+may also need network access to download Go modules until reproducible prebuilt
+release artifacts exist.
+
 ## Usage
 
 ```bash
@@ -93,8 +114,9 @@ Kubernetes mechanism and the required resource relationship both exist.
 ```mermaid
 flowchart LR
     CLI["inspect Service / Deployment / Pod"] --> C["focused collector"]
-    C --> G["directed resource graph"]
-    C --> U["collection issues / unknown evidence"]
+    C --> T["temporal-integrity check"]
+    T --> G["directed resource graph"]
+    T --> U["collection issues / unknown evidence"]
     G --> R["deterministic rules"]
     R --> F["evidence-backed findings"]
     G --> X["typed causal predicates"]
@@ -127,7 +149,27 @@ the payload, which is unnecessary for the current diagnostic model. The exact
 current API operations and least-privilege examples are documented in
 [`docs/rbac.md`](docs/rbac.md).
 
-### 2. Establish the Kubernetes semantics
+### 2. Establish temporal integrity
+
+Live collection is a sequence of API calls, not an atomic cluster snapshot.
+kdiag records the collection start/end timestamps and the focus resource's
+starting and ending `resourceVersion` and `generation` under JSON
+`collection`. After gathering related evidence, it reads the focus resource
+again. If that final read fails, or the focus identity/revision changed, the
+graph is known to span a transition: rule evaluation is suspended and health
+is `unknown` rather than presenting a mixed-time causal chain.
+
+For every collected Deployment and ReplicaSet, kdiag also requires
+`status.observedGeneration >= metadata.generation`. A related controller that
+has not observed the latest specification is reconciling stale status;
+diagnosing availability or rollout state from that window would be premature.
+
+This baseline proves focus-resource stability and controller-generation
+freshness. It does not claim an atomic snapshot across related Pods, Services,
+and EndpointSlices; the bounded policy for those independently changing
+resources remains an explicit roadmap gate.
+
+### 3. Establish the Kubernetes semantics
 
 The collector asks the API server for its version and records the reported
 `GitVersion` in both console and JSON output. Every registered rule declares an
@@ -137,10 +179,12 @@ range. Outside it, the rule is listed under `rules.skipped`, the missing
 coverage is visible, and an otherwise healthy result becomes `unknown`.
 
 The current built-in range is Kubernetes 1.34–1.36, the three maintained minor
-branches at the time of this pre-release work. This is not yet a support claim:
-the full range still needs real-cluster e2e validation. A new Kubernetes minor
-does not become compatible merely because the API request still succeeds. The
-window is reviewed and advanced deliberately. See the Kubernetes
+branches at the time of this pre-release work. The digest-pinned Kind CI matrix
+for these minors has been observed green, but this is not yet a support claim:
+the corpus, mixed-component, distribution, and external-operator gates remain
+open. A new Kubernetes minor does not become compatible merely because the API
+request still succeeds. The window is reviewed and advanced deliberately. See
+the Kubernetes
 [release list](https://kubernetes.io/releases/) and
 [version skew policy](https://kubernetes.io/releases/version-skew-policy/).
 
@@ -150,7 +194,7 @@ that eventually depend on those facts will need explicit capability or
 component-version requirements; they cannot infer them from the server version
 alone.
 
-### 3. Build a directed, typed graph
+### 4. Build a directed, typed graph
 
 Every retained object becomes a graph node identified by kind, namespace, and
 name. Relationships are directed edges with a specific meaning:
@@ -178,7 +222,7 @@ A referenced object can be in one of three states:
 Rules may diagnose `missing`; they must never silently convert `unknown` into
 `missing`.
 
-### 4. Evaluate independent diagnostic rules
+### 5. Evaluate independent diagnostic rules
 
 Rules inspect structured Kubernetes state and emit findings. A finding is not
 just a message; it carries a machine-readable type, resource, optional
@@ -209,7 +253,7 @@ engine records the originating rule ID on every accepted finding. This is the
 internal foundation for future community rule packs, not yet a stable public
 plugin API.
 
-### 5. Correlate findings with mechanism-specific predicates
+### 6. Correlate findings with mechanism-specific predicates
 
 After all rules run, kdiag evaluates an explicit list of allowed causal steps.
 Each step requires both finding types and an exact relationship predicate.
@@ -234,7 +278,7 @@ findings remain unlinked. A root cause candidate is therefore the most upstream
 finding in the established chain, not an assertion that kdiag can see beyond
 its evidence boundary.
 
-### 6. Calculate focus health separately from findings
+### 7. Calculate focus health separately from findings
 
 Health describes the resource the user asked about, not every related object
 that happened to enter the graph:
@@ -255,7 +299,7 @@ handling follows the Kubernetes
 serving-but-terminating endpoints are reported as a risk because proxies may
 still route to them when every available endpoint is terminating.
 
-### 7. Render the evidence and exit predictably
+### 8. Render the evidence and exit predictably
 
 The console groups root candidates, causal chains, propagated symptoms, other
 findings, skipped rules, and incomplete evidence. Equivalent Pod findings are
@@ -306,6 +350,9 @@ The trust model is deliberately conservative:
    resource degraded.
 5. **Secret payloads are not diagnostic input.** kdiag currently leaves Secret
    existence as unknown rather than issuing a typed GET that returns its data.
+6. **Transition windows suspend diagnosis.** A changed/unverifiable focus
+   revision or stale collected Deployment/ReplicaSet generation produces
+   explicit `unknown` health instead of running rules over mixed-time evidence.
 
 ## Diagnostic coverage
 
@@ -361,9 +408,10 @@ a strict healthy control and a broken-to-recovered readiness flow. Additional
 fixture and adversarial tests cover healthy state, missing ConfigMaps,
 ambiguous SIGKILL signals, eviction, EndpointSlice semantics, API failures,
 cross-workload correlation, cross-container correlation, and deterministic
-JSON output. CI is configured to run the same suite with digest-pinned Kind
-images for Kubernetes 1.34.8, 1.35.5, and 1.36.1; the provisional support gate
-remains open until those runs are observed and kept green.
+JSON output. CI runs the same suite with digest-pinned Kind images for
+Kubernetes 1.34.8, 1.35.5, and 1.36.1, and the configured matrix has been
+observed green. The provisional support gate remains open for corpus precision,
+environment diversity, and external-operator validation.
 
 ## Current limitations
 
@@ -378,12 +426,15 @@ remains open until those runs are observed and kept green.
   RBAC contract.
 - Events are transient and message formats vary. Missing events reduce
   evidence; they must not be read as proof that something never happened.
+- Focus-resource revision checks detect a proven transition during collection,
+  but they do not make the related multi-resource graph an atomic snapshot.
+  Related-resource temporal validation remains open.
 - Secret existence is shown as incomplete evidence because Secret data is not
   fetched. The default RBAC contract intentionally keeps it unknown: even a
   metadata-only request would require `get` permission that can fetch the full
   payload outside kdiag.
-- Similar failures across several replicas are reported per Pod; report-level
-  grouping is not implemented yet.
+- Equivalent replica findings are grouped only in console presentation; JSON
+  deliberately retains every per-Pod finding and evidence item.
 - “Root cause candidate” means the most upstream finding supported by the
   collected graph. It is not a claim that kdiag can see application internals,
   external dependencies, metrics, or logs.

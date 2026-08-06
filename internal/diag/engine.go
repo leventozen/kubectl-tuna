@@ -26,6 +26,7 @@ const (
 type Result struct {
 	Focus         graph.ResourceRef            `json:"focus"`
 	Cluster       graph.ClusterInfo            `json:"cluster"`
+	Collection    *graph.CollectionInfo        `json:"collection,omitempty"`
 	Health        Health                       `json:"health"`
 	Findings      []*Finding                   `json:"findings"`
 	RootCauses    []*Finding                   `json:"-"`
@@ -43,8 +44,9 @@ type RuleSkip struct {
 }
 
 type RuleEvaluationSummary struct {
-	Evaluated int        `json:"evaluated"`
-	Skipped   []RuleSkip `json:"skipped,omitempty"`
+	Evaluated       int        `json:"evaluated"`
+	Skipped         []RuleSkip `json:"skipped,omitempty"`
+	SuspendedReason string     `json:"suspendedReason,omitempty"`
 }
 
 // Engine runs a set of rules over a graph and correlates their findings.
@@ -73,7 +75,14 @@ func (e *Engine) Evaluate(g *graph.Graph) *Result {
 	var evaluationWarnings []graph.CollectionIssue
 	ruleSummary := RuleEvaluationSummary{}
 	versionUnavailable := g.HasCollectionIssue(graph.SourceServerVersion, g.Focus)
+	temporalIntegrityUnavailable := g.HasCollectionSourceIssue(graph.SourceTemporalIntegrity)
+	if temporalIntegrityUnavailable {
+		ruleSummary.SuspendedReason = "resource stability or controller freshness was not established for the collected graph"
+	}
 	for _, registration := range e.registry.Registrations() {
+		if temporalIntegrityUnavailable {
+			continue
+		}
 		metadata := registration.Metadata
 		var skipReason string
 		switch {
@@ -129,6 +138,7 @@ func (e *Engine) Evaluate(g *graph.Graph) *Result {
 	res := &Result{
 		Focus:         g.Focus,
 		Cluster:       g.Cluster,
+		Collection:    g.Collection,
 		Health:        HealthOK,
 		Findings:      findings,
 		RootCauses:    RootCauses(findings),

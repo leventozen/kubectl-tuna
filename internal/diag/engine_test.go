@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -263,6 +264,12 @@ func TestJSONOutputIsDeterministic(t *testing.T) {
 	var first string
 	for i := 0; i < 10; i++ {
 		res := evaluateScenario(t, "broken-readiness-port", "service", "finance", "payment")
+		// Collection bounds intentionally differ between live inspections. Hold
+		// them fixed here so this test continues to cover deterministic ordering
+		// of the diagnostic payload for identical evidence.
+		fixed := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+		res.Collection.StartedAt = fixed
+		res.Collection.CompletedAt = fixed.Add(time.Second)
 		var out bytes.Buffer
 		require.NoError(t, report.RenderJSON(&out, res))
 		if i == 0 {

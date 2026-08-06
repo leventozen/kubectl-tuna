@@ -156,6 +156,30 @@ func TestSyntheticGraphWithoutVersionStillEvaluatesRules(t *testing.T) {
 	require.False(t, result.Partial)
 }
 
+func TestTemporalIntegrityIssueSuspendsEveryRule(t *testing.T) {
+	calls := 0
+	registry, err := NewRegistry([]RuleRegistration{
+		registration(countingRule{id: "must-not-run", calls: &calls}, "1.34", "1.36"),
+	})
+	require.NoError(t, err)
+
+	focus := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
+	related := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"}
+	g := graph.New(focus)
+	require.NoError(t, g.SetKubernetesVersion("v1.36.2"))
+	g.AddCollectionIssue(graph.CollectionIssue{
+		Source: graph.SourceTemporalIntegrity, Resource: related,
+		Message: "focus changed", AffectsHealth: true,
+	})
+	result := NewEngineWithRegistry(registry).Evaluate(g)
+
+	require.Zero(t, calls)
+	require.Zero(t, result.Rules.Evaluated)
+	require.NotEmpty(t, result.Rules.SuspendedReason)
+	require.Empty(t, result.Findings)
+	require.Equal(t, HealthUnknown, result.Health)
+}
+
 func TestEngineDiscardsUndeclaredFindingType(t *testing.T) {
 	rule := emittingRule{id: "declared-rule", findingType: "unexpected-type"}
 	registered := registration(rule, "1.34", "1.36")

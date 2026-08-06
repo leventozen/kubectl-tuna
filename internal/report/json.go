@@ -31,6 +31,7 @@ type jsonFinding struct {
 type jsonResult struct {
 	Focus      graph.ResourceRef          `json:"focus"`
 	Cluster    graph.ClusterInfo          `json:"cluster"`
+	Collection *graph.CollectionInfo      `json:"collection,omitempty"`
 	Health     diag.Health                `json:"health"`
 	Partial    bool                       `json:"partial"`
 	Warnings   []graph.CollectionIssue    `json:"warnings,omitempty"`
@@ -44,6 +45,7 @@ func RenderJSON(w io.Writer, res *diag.Result) error {
 	out := jsonResult{
 		Focus:      res.Focus,
 		Cluster:    res.Cluster,
+		Collection: res.Collection,
 		Health:     res.Health,
 		Partial:    res.Partial,
 		Warnings:   res.Warnings,

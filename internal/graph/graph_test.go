@@ -24,6 +24,33 @@ func TestSetKubernetesVersionRejectsPlaceholderVersion(t *testing.T) {
 	require.False(t, g.HasKubernetesVersion())
 }
 
+func TestCollectionTracksStableAndChangedFocusRevisions(t *testing.T) {
+	ref := ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"}
+	started := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	initial := &metav1.PartialObjectMetadata{ObjectMeta: metav1.ObjectMeta{
+		Name: "api", Namespace: "ns", UID: "focus-uid", ResourceVersion: "10", Generation: 3,
+	}}
+
+	g := New(ref)
+	g.BeginCollection(started, initial)
+	stable := initial.DeepCopy()
+	require.Equal(t, FocusStabilityStable, g.FinishCollection(started.Add(time.Second), stable))
+	require.Equal(t, FocusRevision{ResourceVersion: "10", Generation: 3}, g.Collection.FocusStart)
+	require.Equal(t, &FocusRevision{ResourceVersion: "10", Generation: 3}, g.Collection.FocusEnd)
+
+	g = New(ref)
+	g.BeginCollection(started, initial)
+	changed := initial.DeepCopy()
+	changed.ResourceVersion = "11"
+	require.Equal(t, FocusStabilityChanged, g.FinishCollection(started.Add(time.Second), changed))
+	require.Equal(t, FocusStabilityChanged, g.Collection.FocusStability)
+
+	g = New(ref)
+	g.BeginCollection(started, initial)
+	require.Equal(t, FocusStabilityUnknown, g.FinishCollection(started.Add(time.Second), nil))
+	require.Nil(t, g.Collection.FocusEnd)
+}
+
 func TestEventsForSortsChronologically(t *testing.T) {
 	ref := ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
 	g := New(ref)

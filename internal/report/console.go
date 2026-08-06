@@ -77,6 +77,10 @@ func (r *ConsoleReporter) Render(res *diag.Result) {
 			fmt.Fprintf(w, "  - %s: %s\n", skipped.ID, skipped.Reason)
 		}
 	}
+	if res.Rules.SuspendedReason != "" {
+		fmt.Fprintf(w, "\n%s %s\n", r.color(ansiBold, "Rule evaluation suspended"), r.color(ansiDim, "(temporal integrity not established)"))
+		fmt.Fprintf(w, "  - %s\n", res.Rules.SuspendedReason)
+	}
 
 	if len(res.Findings) == 0 {
 		if res.Health == diag.HealthOK {
