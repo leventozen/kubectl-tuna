@@ -421,6 +421,12 @@ evidence; one is a healthy control. Evidence classes, case-acceptance rules,
 and the intentionally still-open 25-case/10-control target are documented in
 [`docs/corpus.md`](docs/corpus.md).
 
+Each Kubernetes-minor e2e job also retains a 30-day machine-readable evidence
+artifact containing its exact API server build, kubelet versions, container
+runtimes, distribution label, and kdiag JSON results. Assertions remain in the
+executable e2e contract. These are project-authored live reproductions, not
+field-validation cases.
+
 ## Current limitations
 
 - Only Service, Deployment, and Pod are valid inspection entry points.

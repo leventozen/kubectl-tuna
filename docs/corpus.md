@@ -35,6 +35,21 @@ Each inspection asserts the exact root-cause type set as well as health and
 partial status. A new unexpected root therefore fails the corpus even if the
 expected diagnosis is also present.
 
+## E2E evidence artifacts
+
+Every CI Kubernetes-minor job uploads one `kdiag-e2e-kubernetes-*` artifact.
+It contains the exact API server build data, distribution label, Node kubelet
+versions, container runtimes, operating-system details, and the JSON result for
+each completed scenario phase. The expectations remain in the executable e2e
+contract rather than introducing a second, prematurely stable case schema.
+Artifacts are retained for 30 days.
+
+These are `live-reproduction` observations because a real API server and
+controllers produced the state. They are still project-authored scenarios, not
+independent field incidents, and the result JSON alone is insufficient to
+replay collection. Therefore they improve version/environment traceability but
+do not count toward the sanitized-field corpus target.
+
 ## Case acceptance
 
 A durable real-cluster case should contain:

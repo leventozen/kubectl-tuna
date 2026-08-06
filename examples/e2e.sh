@@ -11,12 +11,65 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$DIR")"
 KDIAG="$ROOT/bin/kdiag"
+ARTIFACT_DIR="${KDIAG_E2E_ARTIFACT_DIR:-$ROOT/artifacts/e2e}"
+E2E_DISTRIBUTION="${KDIAG_E2E_DISTRIBUTION:-unknown}"
+E2E_CLUSTER_NAME="${KDIAG_E2E_CLUSTER_NAME:-unknown}"
+
+mkdir -p "$ARTIFACT_DIR/cases"
 
 go build -o "$KDIAG" "$ROOT/cmd/kdiag"
 
 echo "Kubernetes environment under test"
 kubectl version -o json
 kubectl get nodes -o custom-columns=NAME:.metadata.name,KUBELET:.status.nodeInfo.kubeletVersion,RUNTIME:.status.nodeInfo.containerRuntimeVersion
+
+capture_environment_artifact() {
+	python3 -c '
+import datetime, json, subprocess, sys
+
+output_path, distribution, cluster_name = sys.argv[1:]
+version = json.loads(subprocess.run(
+    ["kubectl", "version", "-o", "json"], check=True, capture_output=True, text=True,
+).stdout)
+node_list = json.loads(subprocess.run(
+    ["kubectl", "get", "nodes", "-o", "json"], check=True, capture_output=True, text=True,
+).stdout)
+
+nodes = []
+for node in node_list.get("items", []):
+    info = node.get("status", {}).get("nodeInfo", {})
+    nodes.append({
+        "name": node.get("metadata", {}).get("name", ""),
+        "kubeletVersion": info.get("kubeletVersion", ""),
+        "containerRuntimeVersion": info.get("containerRuntimeVersion", ""),
+        "operatingSystem": info.get("operatingSystem", ""),
+        "osImage": info.get("osImage", ""),
+        "architecture": info.get("architecture", ""),
+        "kernelVersion": info.get("kernelVersion", ""),
+    })
+
+artifact = {
+    "schemaVersion": 1,
+    "capturedAt": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+    "distribution": distribution,
+    "clusterName": cluster_name,
+    "apiServer": version.get("serverVersion", {}),
+    "nodes": sorted(nodes, key=lambda node: node["name"]),
+}
+with open(output_path, "w", encoding="utf-8") as stream:
+    json.dump(artifact, stream, indent=2, sort_keys=True)
+    stream.write("\n")
+' "$ARTIFACT_DIR/environment.json" "$E2E_DISTRIBUTION" "$E2E_CLUSTER_NAME"
+}
+
+write_case_result() {
+	local case_id="$1" output="$2"
+	if [ -n "$output" ]; then
+		printf '%s\n' "$output" >"$ARTIFACT_DIR/cases/$case_id.json"
+	fi
+}
+
+capture_environment_artifact
 
 fail=0
 
@@ -33,9 +86,21 @@ strictly_healthy() {
 	python3 -c '
 import json, sys
 res = json.load(sys.stdin)
-ok = res.get("health") == "healthy" and not res.get("partial") and not res.get("findings")
+ok = res.get("health") == "healthy" and res.get("partial") is False and res.get("findings") == []
 raise SystemExit(0 if ok else 1)
 '
+}
+
+matches_broken_contract() {
+	local expected_roots="$1"
+	python3 -c '
+import json, sys
+res = json.load(sys.stdin)
+actual_roots = sorted({f["type"] for f in res.get("findings", []) if f.get("rootCause")})
+expected_roots = sorted(filter(None, sys.argv[1].splitlines()))
+ok = res.get("health") == "degraded" and res.get("partial") is False and actual_roots == expected_roots
+raise SystemExit(0 if ok else 1)
+' "$expected_roots"
 }
 
 check() {
@@ -55,14 +120,14 @@ check() {
 		[ "$status" -ne 2 ] && continue
 		roots="$(echo "$out" | root_causes)"
 		# Exact set equality: an expected root alongside an unrelated false root
-		# is a failure, not a pass. root_causes already sorts and deduplicates.
-		if [ "$roots" = "$expected_root" ]; then
+		# is a failure, not a pass. Partial evidence also fails the contract.
+		if echo "$out" | matches_broken_contract "$expected_root"; then
 			result="PASS"
 			break
 		fi
 	done
 
-	kubectl delete namespace kdiag-demo --wait >/dev/null
+	write_case_result "$scenario" "${out:-}"
 
 	if [ "$result" = "PASS" ]; then
 		echo "PASS: root cause = $expected_root ($((SECONDS - start))s)"
@@ -86,6 +151,7 @@ for f in res.get('findings',[]):
 		kubectl get events -n kdiag-demo --sort-by=.lastTimestamp 2>/dev/null | tail -20 || true
 		fail=1
 	fi
+	kubectl delete namespace kdiag-demo --wait >/dev/null
 }
 
 check_healthy() {
@@ -107,7 +173,7 @@ check_healthy() {
 		fi
 	done
 
-	kubectl delete namespace kdiag-demo --wait >/dev/null
+	write_case_result "$scenario" "$out"
 
 	if [ "$result" = "PASS" ]; then
 		echo "PASS: strictly healthy with complete evidence and zero findings ($((SECONDS - start))s)"
@@ -116,6 +182,7 @@ check_healthy() {
 		[ -n "$out" ] && echo "$out"
 		fail=1
 	fi
+	kubectl delete namespace kdiag-demo --wait >/dev/null
 }
 
 check_recovery() {
@@ -133,11 +200,12 @@ check_recovery() {
 		set -e
 		[ "$status" -ne 2 ] && continue
 		roots="$(echo "$out" | root_causes)"
-		if [ "$roots" = "$expected_root" ]; then
+		if echo "$out" | matches_broken_contract "$expected_root"; then
 			broken="PASS"
 			break
 		fi
 	done
+	write_case_result "$scenario-broken" "$out"
 
 	if [ "$broken" = "PASS" ]; then
 		kubectl patch deployment payment -n kdiag-demo --type=json \
@@ -154,6 +222,7 @@ check_recovery() {
 				break
 			fi
 		done
+		write_case_result "$scenario-recovered" "$out"
 	fi
 
 	kubectl delete namespace kdiag-demo --wait >/dev/null

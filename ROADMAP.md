@@ -181,10 +181,12 @@ whether the model survives Kubernetes behavior it was not authored around.
   exact root-cause sets, health, and partial state across existing fixtures.
   All eight snapshots are explicitly labeled `synthetic-fixture`; they do not
   count as real-cluster validation or satisfy the corpus-size target.
-- [ ] Persist the exact API server version, Node kubelet versions, container
-  runtime, and distribution as machine-readable artifacts for every
-  corpus/e2e case. CI logs already print API server, kubelet, and runtime data;
-  durable case metadata remains open.
+- [x] Persist the exact API server build, Node kubelet versions, container
+  runtimes, operating-system details, and distribution label with every e2e
+  matrix run. CI retains the minimized environment record and each completed
+  scenario phase's result JSON as per-minor artifacts; assertion expectations
+  remain in the executable e2e contract. Sanitized field cases must carry the
+  same provenance when they are added.
 - [ ] Create a sanitized corpus of real `get/describe/events` snapshots,
   including incomplete RBAC, stale-event, active-rollout, and focus-change
   cases. Start with at least 25 labeled cases and at least 10 healthy/recovered
