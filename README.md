@@ -244,9 +244,8 @@ field-validation cases.
 
 Tuna operates near tools such as
 [K8sGPT](https://github.com/k8sgpt-ai/k8sgpt),
-[Popeye](https://github.com/derailed/popeye),
-[HolmesGPT](https://github.com/HolmesGPT/holmesgpt), and graph-oriented projects
-such as [kubernetes-ontology](https://github.com/avitaltamir/kubernetes-ontology).
+[Popeye](https://github.com/derailed/popeye) and
+[HolmesGPT](https://github.com/HolmesGPT/holmesgpt).
 The differentiation is a product hypothesis, not a proven moat: a small local
 binary that produces deterministic, evidence-visible, cross-resource causal
 chains and explicitly represents unknown evidence. Real-cluster precision and
