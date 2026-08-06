@@ -344,6 +344,36 @@ func TestHistoricalOOMDoesNotDegradeReadyPod(t *testing.T) {
 	require.Equal(t, HealthOK, res.Health)
 }
 
+func TestCurrentOOMEvidenceNamesCurrentTerminationState(t *testing.T) {
+	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
+	g := graph.New(podRef)
+	g.AddNode(podRef, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns"},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name: "app", Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("128Mi"),
+			}},
+		}}},
+		Status: corev1.PodStatus{
+			Phase:      corev1.PodRunning,
+			Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse}},
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "app", Ready: false, RestartCount: 1,
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+					Reason: "OOMKilled", ExitCode: 137,
+				}},
+			}},
+		},
+	})
+
+	res := NewEngine().Evaluate(g)
+	finding := findingByType(res, ContainerOOMKilled)
+	require.NotNil(t, finding)
+	require.NotEmpty(t, finding.Evidence)
+	require.Equal(t, "containerStatuses[app].state.terminated", finding.Evidence[0].Source)
+	require.Equal(t, []*Finding{finding}, findingByType(res, PodNotReady).CausedBy)
+}
+
 func TestOOMWithoutMemoryLimitDoesNotClaimCgroupLimit(t *testing.T) {
 	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
 	g := graph.New(podRef)

@@ -3,6 +3,8 @@ package diag
 import (
 	"sort"
 
+	corev1 "k8s.io/api/core/v1"
+
 	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
@@ -22,6 +24,8 @@ var causalRules = []causalRule{
 	{MissingConfigRef, PodNotReady, sameResource},
 	{ContainerOOMKilled, CrashLoopBackOff, samePodComponent},
 	{ContainerSIGKILL, CrashLoopBackOff, samePodComponent},
+	{ContainerOOMKilled, PodNotReady, currentTerminationMatchesFinding},
+	{ContainerSIGKILL, PodNotReady, currentTerminationMatchesFinding},
 	{CrashLoopBackOff, PodNotReady, sameResource},
 	{ImagePullFailure, PodNotReady, sameResource},
 	{PodUnschedulable, PodNotReady, sameResource},
@@ -66,6 +70,37 @@ func samePodComponent(cause, effect *Finding, _ *graph.Graph) bool {
 		return false
 	}
 	return cause.Subject.Container != "" && cause.Subject.Container == effect.Subject.Container
+}
+
+// currentTerminationMatchesFinding links a confirmed current container
+// termination directly to Pod NotReady without requiring the collector to
+// catch the transient CrashLoopBackOff waiting state. Historical terminations
+// and terminations of another container deliberately do not qualify.
+func currentTerminationMatchesFinding(cause, effect *Finding, g *graph.Graph) bool {
+	if cause.Resource != effect.Resource || cause.Subject == nil || cause.Subject.Container == "" {
+		return false
+	}
+	node, ok := g.Node(cause.Resource)
+	if !ok {
+		return false
+	}
+	pod, ok := node.Object.(*corev1.Pod)
+	if !ok {
+		return false
+	}
+	for _, status := range allContainerStatuses(pod) {
+		if status.Name != cause.Subject.Container || status.Ready || status.State.Terminated == nil {
+			continue
+		}
+		termination := status.State.Terminated
+		switch cause.Type {
+		case ContainerOOMKilled:
+			return termination.Reason == "OOMKilled"
+		case ContainerSIGKILL:
+			return termination.ExitCode == 137 && termination.Reason != "OOMKilled"
+		}
+	}
+	return false
 }
 
 func selectedByService(cause, effect *Finding, g *graph.Graph) bool {

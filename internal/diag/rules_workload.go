@@ -268,8 +268,10 @@ func (oomKilledRule) Evaluate(g *graph.Graph) []*Finding {
 	for _, pn := range podNodes(g) {
 		for _, cs := range allContainerStatuses(pn.pod) {
 			term := cs.LastTerminationState.Terminated
+			termSource := fmt.Sprintf("containerStatuses[%s].lastState.terminated", cs.Name)
 			if term == nil && cs.State.Terminated != nil {
 				term = cs.State.Terminated
+				termSource = fmt.Sprintf("containerStatuses[%s].state.terminated", cs.Name)
 			}
 			if term == nil {
 				continue
@@ -316,7 +318,7 @@ func (oomKilledRule) Evaluate(g *graph.Graph) []*Finding {
 				Resource: pn.ref,
 				Subject:  containerSubject(cs.Name),
 				Evidence: []Evidence{
-					{Source: fmt.Sprintf("containerStatuses[%s].lastState.terminated", cs.Name), Value: fmt.Sprintf("reason=%s exitCode=%d", term.Reason, term.ExitCode)},
+					{Source: termSource, Value: fmt.Sprintf("reason=%s exitCode=%d", term.Reason, term.ExitCode)},
 					{Source: fmt.Sprintf("container[%s].resources.limits.memory", cs.Name), Value: limit},
 					{Source: "restartCount", Value: fmt.Sprintf("%d", cs.RestartCount)},
 					{Source: "Pod.status.qosClass", Value: string(pn.pod.Status.QOSClass)},

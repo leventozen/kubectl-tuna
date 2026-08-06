@@ -98,7 +98,7 @@ slices = json.load(sys.stdin).get("items", [])
 ready = any(
     endpoint.get("conditions", {}).get("ready") is not False
     for endpoint_slice in slices
-    for endpoint in endpoint_slice.get("endpoints", [])
+    for endpoint in (endpoint_slice.get("endpoints") or [])
     if endpoint.get("addresses")
 )
 raise SystemExit(0 if ready else 1)

@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
@@ -65,6 +67,51 @@ func TestCorrelationRequiresSameContainer(t *testing.T) {
 	crash.Subject.Container = "sidecar"
 	Correlate([]*Finding{oom, crash}, g)
 	require.Equal(t, []*Finding{crash}, oom.Causes)
+}
+
+func TestCurrentOOMTerminationExplainsPodNotReadyWithoutCrashLoopSnapshot(t *testing.T) {
+	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
+	g := graph.New(podRef)
+	g.AddNode(podRef, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns"},
+		Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{
+			Name:  "app",
+			Ready: false,
+			State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+				Reason: "OOMKilled", ExitCode: 137,
+			}},
+		}}},
+	})
+	oom := &Finding{Type: ContainerOOMKilled, Resource: podRef, Subject: &Subject{Container: "app"}}
+	notReady := &Finding{Type: PodNotReady, Resource: podRef}
+
+	Correlate([]*Finding{oom, notReady}, g)
+
+	require.Equal(t, []*Finding{notReady}, oom.Causes)
+	require.Equal(t, []*Finding{oom}, notReady.CausedBy)
+}
+
+func TestHistoricalOOMTerminationDoesNotExplainCurrentPodNotReady(t *testing.T) {
+	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
+	g := graph.New(podRef)
+	g.AddNode(podRef, &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns"},
+		Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{
+			Name:  "app",
+			Ready: false,
+			State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+				Reason: "OOMKilled", ExitCode: 137,
+			}},
+		}}},
+	})
+	oom := &Finding{Type: ContainerOOMKilled, Resource: podRef, Subject: &Subject{Container: "app"}}
+	notReady := &Finding{Type: PodNotReady, Resource: podRef}
+
+	Correlate([]*Finding{oom, notReady}, g)
+
+	require.Empty(t, oom.Causes)
+	require.Empty(t, notReady.CausedBy)
 }
 
 func TestReplicaOwnersRequireExactDeploymentReplicaSetPodPath(t *testing.T) {
