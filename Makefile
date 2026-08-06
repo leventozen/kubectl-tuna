@@ -1,4 +1,4 @@
-.PHONY: build test vet e2e demo install-plugin release-snapshot demo-output demo-gif
+.PHONY: build test vet benchmark e2e demo install-plugin release-snapshot demo-output demo-gif
 
 PREFIX ?= $(HOME)/.local
 BIN_DIR ?= $(PREFIX)/bin
@@ -12,6 +12,12 @@ test:
 
 vet:
 	go vet ./...
+
+# Local collector cost as namespace Service count grows. This benchmark uses
+# client-go's fake tracker, so it measures decode/filter/graph overhead rather
+# than API-server or network latency.
+benchmark:
+	go test ./internal/kube -run '^$$' -bench BenchmarkCollectPodServiceNamespace -benchmem
 
 # Install as a kubectl plugin on PATH → `kubectl diag …`
 install-plugin: build

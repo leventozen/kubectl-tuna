@@ -384,6 +384,18 @@ func TestPodServiceListFailureKeepsPodDiagnosisAvailable(t *testing.T) {
 	require.True(t, hasWarningSource(res, graph.SourceService))
 }
 
+func TestPodCollectorBroadServiceReadHasConstantRequestCount(t *testing.T) {
+	objects, _ := podServiceNamespaceObjects(250)
+	client := fakeClient(objects...)
+
+	_, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", "api-1")
+	require.NoError(t, err)
+
+	require.Equal(t, 2, actionCount(client.Actions(), "get", "pods"), "focus Pod is read at collection start and end")
+	require.Equal(t, 1, actionCount(client.Actions(), "list", "services"), "reverse Service discovery is one broad namespace LIST")
+	require.Equal(t, 1, actionCount(client.Actions(), "list", "endpointslices"), "only the one matching Service needs EndpointSlices")
+}
+
 func TestDeploymentReplicaSetListFailureKeepsStatusDiagnosisAvailable(t *testing.T) {
 	replicas := int32(1)
 	dep := &appsv1.Deployment{
@@ -531,4 +543,14 @@ func hasFindingType(res *diag.Result, findingType diag.FindingType) bool {
 		}
 	}
 	return false
+}
+
+func actionCount(actions []clienttesting.Action, verb, resource string) int {
+	count := 0
+	for _, action := range actions {
+		if action.GetVerb() == verb && action.GetResource().Resource == resource {
+			count++
+		}
+	}
+	return count
 }

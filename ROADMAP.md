@@ -40,13 +40,13 @@ symptom, and evidence kdiag could not collect.
 The latest trust audit puts evidence quality ahead of new resource families or
 external rule formats:
 
-1. Define and benchmark the remaining bounded stability policy for related Pods
-   and EndpointSlices. Focus revision and related Deployment/ReplicaSet
-   controller freshness are now covered.
-2. Measure the remaining namespace-wide Service scan and large-namespace
-   latency/partial-result behavior.
-3. Build a labeled corpus with at least 25 realistic cases, including at least
+1. Run the new namespace Service benchmark against real API servers and record
+   latency, payload, throttling, and timeout/partial-result behavior. The local
+   fake-client cost and exact request count are now reproducible.
+2. Build a labeled corpus with at least 25 realistic cases, including at least
    10 healthy/recovered controls and positive/negative coverage for every rule.
+3. Include active rollouts and rapidly changing Pod/EndpointSlice cases; use
+   them to decide whether dependency-aware revision verification is necessary.
 4. Validate results with 3–5 external operators and turn every wrong or missed
    diagnosis into a regression case.
 5. Stabilize the JSON/evidence contract only after the corpus exposes which
@@ -122,8 +122,12 @@ Still required:
   exposes no reliable server-side query over `Service.spec.selector`, so a
   narrower implementation must not approximate with metadata labels. Record
   API call count, payload size, collection duration, and timeout/partial
-  behavior against small and large synthetic namespaces before choosing an
-  optimization.
+  behavior against small and large namespaces on real API servers before
+  choosing an optimization; the reproducible local baseline is complete below.
+- [x] Add an exact Pod-focus request-budget test and reproducible fake-client
+  benchmark for namespaces with 10, 1,000, and 5,000 Services. The benchmark
+  reports approximate ServiceList size and local time/allocation growth; it
+  intentionally excludes API-server/network latency.
 - [x] Keep Secret existence permanently `unknown` in the default collector and
   request no Secret permissions. A future opt-in metadata-only experiment must
   remain outside the default RBAC contract and prove that it never decodes
@@ -145,11 +149,13 @@ Still required:
   has `status.observedGeneration < metadata.generation`; this covers related
   owner controllers as well as a Deployment focus. An unobserved spec update is
   a controller transition, not evidence of an unavailable or stuck rollout.
-- [ ] Define and test a bounded temporal-integrity policy for related Pods and
-  EndpointSlices. Focus stability plus controller freshness is useful evidence
-  but is not an atomic multi-resource snapshot and must not be described as
-  one. Compare the cost and permission impact of bounded second LISTs before
-  adding extra requests or `watch` access.
+- [x] Define the bounded temporal-integrity policy for independently changing
+  related resources. Do not add a blanket second collection pass or `watch`
+  permission: partial revalidation cannot prove graph atomicity, while a full
+  pass doubles broad reads and all other evidence calls. Keep the limitation
+  explicit and revisit dependency-aware verification only when active-rollout
+  corpus cases or field reports demonstrate a drift-caused false root. See
+  `docs/temporal-integrity.md`.
 
 Gate A passes only when there are no known factually invalid rules, no known
 cross-resource false causal edges, and every missing evidence source is visible
@@ -312,7 +318,8 @@ These are not current work:
 | In-tree registry before external packs | Contributors can improve coverage now without freezing an unsafe public execution contract. |
 | No native Go plugins | ABI fragility and in-process access to cluster credentials are unacceptable extension boundaries. |
 | Suspend on focus transition or stale Deployment generation | Sequential GET/LIST calls can span a rollout; mixed-time evidence cannot support a trust-first diagnosis. |
-| Focus stability is not an atomic snapshot claim | Kubernetes does not provide a single transaction across the resource kinds kdiag reads; related-resource temporal policy remains an explicit open gate. |
+| Focus stability is not an atomic snapshot claim | Kubernetes does not provide a single transaction across the resource kinds kdiag reads; the related-resource boundary remains explicit and must be challenged by active-rollout corpus cases. |
+| No blanket second collection pass | Partial revalidation creates false assurance; a full pass doubles broad reads and volatile evidence calls. Corpus evidence must justify dependency-aware revalidation first. |
 
 ## Success signals
 

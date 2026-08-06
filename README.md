@@ -167,7 +167,9 @@ diagnosing availability or rollout state from that window would be premature.
 This baseline proves focus-resource stability and controller-generation
 freshness. It does not claim an atomic snapshot across related Pods, Services,
 and EndpointSlices; the bounded policy for those independently changing
-resources remains an explicit roadmap gate.
+resources remains explicit. The alternatives, costs, benchmark, and current
+decision are documented in
+[`docs/temporal-integrity.md`](docs/temporal-integrity.md).
 
 ### 3. Establish the Kubernetes semantics
 

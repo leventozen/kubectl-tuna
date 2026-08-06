@@ -23,6 +23,8 @@ could be mixed across a transition. Every collected Deployment and ReplicaSet
 is also required to have `status.observedGeneration` at least as new as
 `metadata.generation`; this applies to related owner controllers as well as a
 Deployment focus and does not add API calls or permissions.
+The reason kdiag does not issue blanket second reads or request `watch` access
+is documented in [`temporal-integrity.md`](temporal-integrity.md).
 
 | API group | Resource | Verbs | Why |
 |---|---|---|---|
