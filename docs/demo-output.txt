@@ -1,5 +1,5 @@
 Kind:      Service
-Namespace: kdiag-demo
+Namespace: tuna-demo
 Name:      payment
 Kubernetes: v1.36.2
 Health:    DEGRADED
@@ -7,7 +7,7 @@ Health:    DEGRADED
 Root cause candidates
 
   [1] CRITICAL readiness-probe-port-mismatch  (confidence: high, impact: current)
-      Pod/payment-7b889d-x8p2 (kdiag-demo)
+      Pod/payment-7b889d-x8p2 (tuna-demo)
       container/app
       Readiness probe of container "app" targets port 8080, but the container declares 80 (name: http)
 
@@ -21,17 +21,17 @@ Root cause candidates
       - Verify the listening port inside the container: kubectl exec ... -- ss -lntp
 
     Causal chain:
-      readiness-probe-port-mismatch  Pod/payment-7b889d-x8p2 (kdiag-demo)
-        → readiness-probe-failing  Pod/payment-7b889d-x8p2 (kdiag-demo)
-          → pod-not-ready  Pod/payment-7b889d-x8p2 (kdiag-demo)
-            → service-no-ready-endpoints  Service/payment (kdiag-demo)
+      readiness-probe-port-mismatch  Pod/payment-7b889d-x8p2 (tuna-demo)
+        → readiness-probe-failing  Pod/payment-7b889d-x8p2 (tuna-demo)
+          → pod-not-ready  Pod/payment-7b889d-x8p2 (tuna-demo)
+            → service-no-ready-endpoints  Service/payment (tuna-demo)
 
 Propagated symptoms (explained by the causes above)
-  - WARNING deployment-unavailable  Deployment/payment (kdiag-demo)
+  - WARNING deployment-unavailable  Deployment/payment (tuna-demo)
     Deployment has 0/1 available replicas
-  - WARNING pod-not-ready  Pod/payment-7b889d-x8p2 (kdiag-demo)
+  - WARNING pod-not-ready  Pod/payment-7b889d-x8p2 (tuna-demo)
     Pod is Running and NotReady (0/1 containers ready)
-  - WARNING readiness-probe-failing  Pod/payment-7b889d-x8p2 (kdiag-demo)
+  - WARNING readiness-probe-failing  Pod/payment-7b889d-x8p2 (tuna-demo)
     Readiness probe is failing, keeping the Pod NotReady
-  - CRITICAL service-no-ready-endpoints  Service/payment (kdiag-demo)
+  - CRITICAL service-no-ready-endpoints  Service/payment (tuna-demo)
     Service port "http" (80/TCP) has zero endpoints eligible for regular traffic

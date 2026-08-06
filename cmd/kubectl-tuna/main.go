@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/leventozen/kdiag/internal/cli"
+	"github.com/leventozen/kubectl-tuna/internal/cli"
 )
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -15,7 +15,7 @@ func main() {
 		if code, ok := cli.ExitCode(err); ok {
 			os.Exit(code)
 		}
-		fmt.Fprintf(os.Stderr, "kdiag: %v\n", err)
+		fmt.Fprintf(os.Stderr, "kubectl-tuna: %v\n", err)
 		os.Exit(1)
 	}
 }

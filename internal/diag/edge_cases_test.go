@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	"github.com/leventozen/kdiag/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
 func TestEndpointSliceNilReadyMeansReady(t *testing.T) {

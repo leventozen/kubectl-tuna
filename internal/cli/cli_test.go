@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/leventozen/kdiag/internal/diag"
+	"github.com/leventozen/kubectl-tuna/internal/diag"
 )
 
 func TestExitErrorForHealth(t *testing.T) {
@@ -37,4 +37,10 @@ func TestExitErrorForHealth(t *testing.T) {
 func TestExitCodeRejectsOperationalError(t *testing.T) {
 	_, ok := ExitCode(errors.New("API unavailable"))
 	require.False(t, ok)
+}
+
+func TestRootCommandUsesKubectlTunaIdentity(t *testing.T) {
+	root := NewRootCommand("dev")
+	require.Equal(t, "kubectl-tuna", root.Use)
+	require.Contains(t, root.Long, "kubectl tuna inspect")
 }

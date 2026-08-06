@@ -13,7 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/leventozen/kdiag/internal/diag"
+	"github.com/leventozen/kubectl-tuna/internal/diag"
 )
 
 const seedCorpusEvidenceClass = "synthetic-fixture"

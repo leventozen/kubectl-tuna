@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/leventozen/kdiag/internal/kube"
+	"github.com/leventozen/kubectl-tuna/internal/kube"
 )
 
 // BenchmarkCollectPodServiceNamespace makes the remaining broad read visible:

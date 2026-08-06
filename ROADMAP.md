@@ -1,18 +1,18 @@
-# kdiag roadmap
+# Tuna roadmap
 
-This roadmap is organized around proof and trust, not version numbers. kdiag
+This roadmap is organized around proof and trust, not version numbers. Tuna
 will not be submitted to Krew or assigned a supported release version until the
 current diagnostic surface has earned that step.
 
 ## Product thesis
 
-> kdiag turns disconnected Kubernetes observations into a compact causal
+> Tuna turns disconnected Kubernetes observations into a compact causal
 > diagnosis by combining a directed resource graph, deterministic rules,
 > visible evidence, and explicit unknown state.
 
 The valuable part is not the number of checks. It is whether an operator can
 trust the distinction between current problem, risk, history, propagated
-symptom, and evidence kdiag could not collect.
+symptom, and evidence Tuna could not collect.
 
 ## Non-negotiable principles
 
@@ -37,7 +37,7 @@ symptom, and evidence kdiag could not collect.
 
 ## Current status
 
-kdiag has a strong internal reliability baseline but almost no independent
+Tuna has a strong internal reliability baseline but almost no independent
 product validation:
 
 - 15 built-in rules own 17 finding types with direct positive and negative
@@ -93,10 +93,11 @@ Open it as soon as these minimum safety and honesty blockers are complete:
 - [x] `SECURITY.md` exists with private vulnerability-reporting instructions;
   README remains explicit about experimental status, unsupported versions,
   runtime data boundaries, and the absence of a release/Krew installation.
-- [ ] Repository history and tracked files have been checked for credentials,
+- [x] Repository history and tracked files have been checked for credentials,
   cluster identities, private incident data, and other material that must not
   become public. Credential, kubeconfig, and private-incident scans are clean;
-  commit-author e-mail privacy is the remaining publication decision.
+  commit author and committer e-mails have been rewritten to the maintainer's
+  GitHub noreply address.
 - [ ] GitHub repository description, license display, and default-branch
   protection are ready for outside readers and contributors.
 
@@ -276,7 +277,7 @@ whether the model survives Kubernetes behavior it was not authored around.
   be non-gating; do not encode a controller race as a deterministic test.
 - [ ] Run structured trials with 3–5 external operators. Record installation
   friction, useful chains, false roots, misses, abstentions, partial evidence,
-  collection time, and whether kdiag shortened diagnosis.
+  collection time, and whether Tuna shortened diagnosis.
 - [ ] Create a sanitized corpus of real `get/describe/events` snapshots,
   including incomplete RBAC, stale-event, active-rollout, and focus-change
   cases. Start with at least 25 labeled cases and at least 10 healthy/recovered
@@ -319,7 +320,7 @@ better integration surface than prematurely building a TUI or AI layer.
   evidence, not free-form guesses.
 
 Gate C passes when another program can consume results without importing
-kdiag's Go internals or scraping console text.
+Tuna's Go internals or scraping console text.
 
 ## Gate D — External rule authoring pilot
 
@@ -329,7 +330,7 @@ Only after Gates A and C, with Gate B providing the validation loop:
   versioned out-of-process protocol. Native Go `plugin` shared objects are not
   a candidate.
 - [ ] Publish a normalized, versioned, data-minimized graph snapshot that rule
-  consumers can evaluate without importing kdiag internals or obtaining a
+  consumers can evaluate without importing Tuna internals or obtaining a
   Kubernetes client. This is an extension-system input, not part of the first
   stable result JSON contract.
 - [ ] Define namespaced external rule IDs, pack/schema compatibility,
@@ -370,8 +371,12 @@ Making the source repository soft-public does not pass this gate. A versioned
 preview and broad announcement happen only after Gates A and B, and the stable
 core of Gate C:
 
-- [ ] Choose a plugin name after checking Krew naming and existing plugin
-  collisions; `diag` may be too generic.
+- [x] Use **Tuna** as the product name, `kubectl-tuna` as the repository and
+  executable, and `kubectl tuna` as the operator command. Do not ship a bare
+  `tuna` executable or retain the already-colliding `kubectl diag` name.
+- [x] Remove inactive GoReleaser/Krew scaffolding that hard-coded the unchosen
+  `diag` command and placeholder release URLs. Recreate one generated release
+  path only after the final repository, binary, and Krew names are settled.
 - [ ] Finalize support and compatibility policies. Basic security,
   contributing, evaluator, and RBAC guidance already belong to the soft-public
   checklist.
@@ -381,8 +386,9 @@ core of Gate C:
 - [ ] Submit to Krew only after the binary and name are stable enough that
   discovery does not amplify a misleading tool.
 
-The existing GoReleaser and Krew files are inactive scaffolding, not evidence
-that a release exists.
+Release and Krew configuration will be created at this gate, after the name and
+artifact contract are stable; placeholder distribution files are deliberately
+not kept on `main` in the meantime.
 
 ## Explicitly deferred
 
@@ -408,20 +414,21 @@ These are not current work:
 | Decision | Reason |
 |---|---|
 | No release version or Krew submission yet | Distribution multiplies both value and mistakes. Precision gates come first. |
+| Brand Tuna; ship only as `kubectl-tuna` / `kubectl tuna` | The former project name and `kubectl diag` collide with existing Kubernetes diagnostic tools. Bare `tuna` is also an established Linux command; the kubectl-prefixed identity preserves the personal brand without creating an executable collision. |
 | Remove PDB rollout diagnosis | Deployment/StatefulSet rolling updates are not Eviction API operations; the rule encoded a false mechanism. |
 | Replace selector-mismatch inference with selector-no-pods | A label-near Deployment does not prove operator intent; the empty selector result is factual and needs no namespace-wide Deployment scan. |
 | Directional typed correlation | Undirected proximity allowed unrelated workloads, Pods, and Nodes to contaminate one another. |
 | Container-level subjects | A Pod is too coarse for multi-container causal claims. |
 | Explicit unknown/partial state | Missing evidence and evidence of absence are different facts. |
 | Do not GET Secrets | The typed call returns data, which is unnecessary and expands RBAC/security risk. |
-| Secret existence stays unknown by default | Even a metadata-only request needs Secret `get` permission, which grants the caller access to full payloads outside kdiag. |
+| Secret existence stays unknown by default | Even a metadata-only request needs Secret `get` permission, which grants the caller access to full payloads outside Tuna. |
 | Live diagnosis before manifest mode | Runtime cross-resource causality is the product hypothesis; static manifest linting is already crowded. |
 | Go rules before a DSL | The rule and evidence model must emerge from enough correct cases before being generalized. |
 | Version ranges fail closed | API stability reduces risk but does not prove unchanged diagnostics, feature gates, events, or component behavior. |
 | In-tree registry before external packs | Contributors can improve coverage now without freezing an unsafe public execution contract. |
 | No native Go plugins | ABI fragility and in-process access to cluster credentials are unacceptable extension boundaries. |
 | Suspend on focus transition or stale Deployment generation | Sequential GET/LIST calls can span a rollout; mixed-time evidence cannot support a trust-first diagnosis. |
-| Focus stability is not an atomic snapshot claim | Kubernetes does not provide a single transaction across the resource kinds kdiag reads; the related-resource boundary remains explicit and must be challenged by active-rollout corpus cases. |
+| Focus stability is not an atomic snapshot claim | Kubernetes does not provide a single transaction across the resource kinds Tuna reads; the related-resource boundary remains explicit and must be challenged by active-rollout corpus cases. |
 | No blanket second collection pass | Partial revalidation creates false assurance; a full pass doubles broad reads and volatile evidence calls. Corpus evidence must justify dependency-aware revalidation first. |
 | Keep one namespace-wide Service LIST for now | Kubernetes has no reliable reverse selector query. A weak local baseline showed linear payload growth but no urgent latency problem, so correctness beats speculative optimization until field evidence says otherwise. |
 | Soft-public source is not a release | Visibility enables evaluator feedback without implying a supported version, compatibility promise, Krew readiness, or broad launch. |
@@ -432,7 +439,7 @@ These are not current work:
 After the first 3–5 external operators, pause new rules, adapters, and extension
 work and revisit the product thesis if any of these dominate applicable cases:
 
-- operators do not use kdiag a second time or cannot name a diagnosis it made
+- operators do not use Tuna a second time or cannot name a diagnosis it made
   materially faster;
 - results are mostly `unknown`, partial, or standalone observations rather than
   useful causal chains;
@@ -458,7 +465,7 @@ In order of importance:
    versions, while partial RBAC produces explicit unknowns instead of false
    absence findings.
 4. At least two external operators can identify a case where the evidence chain
-   shortened diagnosis, and at least one chooses to use kdiag again.
+   shortened diagnosis, and at least one chooses to use Tuna again.
 5. Wrong and missed diagnoses become sanitized regression cases quickly.
 6. Only then: repeat users, external contributions, stars, a versioned preview,
    and distribution.

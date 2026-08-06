@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	clienttesting "k8s.io/client-go/testing"
 
-	"github.com/leventozen/kdiag/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
 func TestClusterVersionDiscoveryHonorsContextDeadline(t *testing.T) {

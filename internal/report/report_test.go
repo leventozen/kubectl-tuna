@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/leventozen/kdiag/internal/diag"
-	"github.com/leventozen/kdiag/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/diag"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
 func TestJSONIncludesImpactSubjectAndPartialEvidence(t *testing.T) {

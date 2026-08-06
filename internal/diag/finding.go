@@ -1,10 +1,10 @@
-// Package diag contains kdiag's diagnostic engine: the rules that evaluate a
+// Package diag contains Tuna's diagnostic engine: the rules that evaluate a
 // resource graph, the findings they produce, and the correlation logic that
 // links findings into causal chains and separates root causes from
 // propagated symptoms.
 package diag
 
-import "github.com/leventozen/kdiag/internal/graph"
+import "github.com/leventozen/kubectl-tuna/internal/graph"
 
 type Severity string
 

@@ -1,4 +1,4 @@
-// Package cli wires kdiag's cobra commands.
+// Package cli wires Tuna's cobra commands.
 package cli
 
 import (
@@ -6,17 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/leventozen/kdiag/internal/diag"
-	"github.com/leventozen/kdiag/internal/graph"
-	"github.com/leventozen/kdiag/internal/kube"
-	"github.com/leventozen/kdiag/internal/report"
+	"github.com/leventozen/kubectl-tuna/internal/diag"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/kube"
+	"github.com/leventozen/kubectl-tuna/internal/report"
 )
 
 type options struct {
@@ -45,9 +43,7 @@ func ExitCode(err error) (int, bool) {
 	return 0, false
 }
 
-// NewRootCommand builds the kdiag command tree.
-// Invoked as kubectl-diag (krew / PATH plugin) the usage string becomes
-// "kubectl diag"; standalone installs keep "kdiag".
+// NewRootCommand builds the kubectl-tuna command tree.
 func NewRootCommand(version string) *cobra.Command {
 	opts := &options{}
 	use := commandUse()
@@ -56,16 +52,15 @@ func NewRootCommand(version string) *cobra.Command {
 		Use:     use,
 		Version: version,
 		Short:   "Evidence-based Kubernetes diagnostics with causal chains",
-		Long: `kdiag inspects a Kubernetes resource, discovers its relationships
+		Long: `Tuna inspects a Kubernetes resource, discovers its relationships
 (Pods, ReplicaSets, EndpointSlices, ConfigMaps, events, ...), evaluates
 deterministic diagnostic rules over the resulting graph, and correlates
 the findings into causal chains that separate root causes from
 propagated symptoms.
 
-Run standalone, or install the locally built binary as a kubectl PATH plugin:
+Install the binary as a kubectl PATH plugin and run:
 
-  kdiag inspect service NAME -n NAMESPACE
-  kubectl diag inspect service NAME -n NAMESPACE`,
+  kubectl tuna inspect service NAME -n NAMESPACE`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -163,14 +158,8 @@ func collect(ctx context.Context, c *kube.Collector, kind, namespace, name strin
 	}
 }
 
-// commandUse returns the cobra Use string based on how the binary was named.
-// Releases ship as kubectl-diag (invoked via `kubectl diag`); go install
-// keeps the standalone kdiag name. Cobra Use must not contain spaces.
+// commandUse returns the executable name. kubectl invokes this binary as
+// `kubectl tuna`; Cobra's Use value itself must not contain spaces.
 func commandUse() string {
-	base := filepath.Base(os.Args[0])
-	base = strings.TrimSuffix(base, ".exe")
-	if strings.Contains(base, "kubectl-diag") {
-		return "kubectl-diag"
-	}
-	return "kdiag"
+	return "kubectl-tuna"
 }

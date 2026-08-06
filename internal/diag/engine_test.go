@@ -16,9 +16,9 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 
-	"github.com/leventozen/kdiag/internal/diag"
-	"github.com/leventozen/kdiag/internal/kube"
-	"github.com/leventozen/kdiag/internal/report"
+	"github.com/leventozen/kubectl-tuna/internal/diag"
+	"github.com/leventozen/kubectl-tuna/internal/kube"
+	"github.com/leventozen/kubectl-tuna/internal/report"
 )
 
 const fixtureKubernetesVersion = "v1.36.2"

@@ -7,7 +7,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/leventozen/kdiag/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
 const (

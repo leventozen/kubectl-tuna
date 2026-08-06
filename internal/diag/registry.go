@@ -6,7 +6,7 @@ import (
 
 	utilversion "k8s.io/apimachinery/pkg/util/version"
 
-	"github.com/leventozen/kdiag/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
 // RuleFamily groups rules for documentation and future rule-pack discovery.

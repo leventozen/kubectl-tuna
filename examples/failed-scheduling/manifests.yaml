@@ -1,19 +1,19 @@
 # Scenario: the Pod requests 64 CPUs; no node can satisfy it, so the
 # scheduler leaves it Pending with reason Unschedulable.
 #
-# Expected kdiag diagnosis:
+# Expected Tuna diagnosis:
 #   root cause:  pod-unschedulable (classified as a resource shortage)
 #   chain:       pod-unschedulable → pod-not-ready → deployment-unavailable
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: kdiag-demo
+  name: tuna-demo
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: analytics
-  namespace: kdiag-demo
+  namespace: tuna-demo
 spec:
   replicas: 1
   selector:
@@ -26,7 +26,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: nginx:1.27-alpine
+          image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
           resources:
             requests:
               cpu: "64" # BUG: no node has 64 allocatable CPUs

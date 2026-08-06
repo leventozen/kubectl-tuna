@@ -4,7 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-KDIAG_DEMO=1 go test ./internal/diag -run TestRenderDemo -v 2>&1 \
+TUNA_DEMO=1 go test ./internal/diag -run TestRenderDemo -v 2>&1 \
   | sed -n '/^Kind:/,/^--- PASS/p' \
   | sed '/^--- PASS/d' \
   | awk 'NF { for (i = 0; i < blanks; i++) print ""; blanks = 0; print; next } { blanks++ }' \

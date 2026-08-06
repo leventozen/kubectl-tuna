@@ -129,7 +129,7 @@ type CollectionInfo struct {
 }
 
 // Graph is a small in-memory resource relationship graph built around a
-// single focus resource (the resource the user asked kdiag to inspect).
+// single focus resource (the resource the user asked Tuna to inspect).
 type Graph struct {
 	Focus ResourceRef
 	// Cluster is empty for synthetic graphs built directly by unit tests. Live

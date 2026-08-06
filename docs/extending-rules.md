@@ -1,13 +1,13 @@
-# Extending kdiag rules
+# Extending Tuna rules
 
-kdiag should become extensible, but it is not a third-party rule platform yet.
+Tuna should become extensible, but it is not a third-party rule platform yet.
 The current contribution path is an in-tree Go rule reviewed and released with
-kdiag. Installing an arbitrary YAML file, shared library, or executable does
+Tuna. Installing an arbitrary YAML file, shared library, or executable does
 not add a rule today.
 
 That limitation is intentional while the graph, evidence, finding, and JSON
 contracts are pre-release. Freezing the wrong extension API would make false
-diagnoses harder to correct and would transfer kdiag's credibility to code it
+diagnoses harder to correct and would transfer Tuna's credibility to code it
 cannot constrain.
 
 ## What exists now
@@ -66,9 +66,9 @@ contract is a separate security and product decision.
 
 Go's `plugin` package couples a plugin to operating system support, the exact
 Go toolchain, dependency versions, build flags, and compatible package ABIs.
-It also loads third-party code directly into the kdiag process with the user's
+It also loads third-party code directly into the Tuna process with the user's
 cluster credentials. That is a poor portability and trust boundary for a kubectl
-plugin, so kdiag will not use native Go shared objects as its public extension
+plugin, so Tuna will not use native Go shared objects as its public extension
 model.
 
 ## Planned extension sequence
@@ -78,7 +78,7 @@ contract, in this order:
 
 1. **Stable normalized snapshot.** Publish a versioned, data-minimized input
    model derived from the focused graph. Packs receive facts already collected
-   by kdiag; they do not get a Kubernetes client or Secret data.
+   by Tuna; they do not get a Kubernetes client or Secret data.
 2. **Declarative pilot.** Evaluate a bounded expression format such as CEL for
    predicates and finding templates. Parsing is strict, evaluation is cost- and
    time-limited, and unknown fields fail validation.

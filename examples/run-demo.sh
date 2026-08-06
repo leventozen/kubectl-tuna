@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy a broken scenario to the current cluster and diagnose it with kdiag.
+# Deploy a broken scenario to the current cluster and diagnose it with Tuna.
 #
 # Usage: examples/run-demo.sh <scenario> [--keep]
 #   scenarios: broken-readiness-port | service-selector-mismatch | oomkilled | failed-scheduling
@@ -38,16 +38,16 @@ kubectl apply -f "$DIR/$SCENARIO/manifests.yaml"
 echo ">>> Waiting ${WAIT}s for the failure to develop..."
 sleep "$WAIT"
 
-echo ">>> Running kdiag..."
+echo ">>> Running Tuna..."
 set +e
-go run "$ROOT/cmd/kdiag" inspect "$KIND" "$NAME" -n kdiag-demo
+go run "$ROOT/cmd/kubectl-tuna" inspect "$KIND" "$NAME" -n tuna-demo
 status=$?
 set -e
 
 if [ "$KEEP" != "--keep" ]; then
 	echo ">>> Cleaning up..."
-	kubectl delete namespace kdiag-demo --wait=false
+	kubectl delete namespace tuna-demo --wait=false
 fi
 
-# kdiag exits 2 when findings are present: that's success for a broken demo.
+# Tuna exits 2 when findings are present: that's success for a broken demo.
 [ "$status" -eq 2 ]

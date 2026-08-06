@@ -1,6 +1,6 @@
 # RBAC and data-access contract
 
-kdiag is read-only, but “read-only” is not precise enough for a diagnostic
+Tuna is read-only, but “read-only” is not precise enough for a diagnostic
 tool. This document records the API operations the current collectors perform
 and the data they deliberately do not request.
 
@@ -9,7 +9,7 @@ resource or verb must update this document and add a collector test.
 
 ## Current operations
 
-Before evaluating rules, kdiag also requests the API server's non-resource
+Before evaluating rules, Tuna also requests the API server's non-resource
 `GET /version` endpoint. The reported minor version is included in output and
 is checked against each rule's reviewed compatibility range. If version
 discovery fails, version-scoped rules are skipped and health is `unknown`
@@ -23,7 +23,7 @@ could be mixed across a transition. Every collected Deployment and ReplicaSet
 is also required to have `status.observedGeneration` at least as new as
 `metadata.generation`; this applies to related owner controllers as well as a
 Deployment focus and does not add API calls or permissions.
-The reason kdiag does not issue blanket second reads or request `watch` access
+The reason Tuna does not issue blanket second reads or request `watch` access
 is documented in [`temporal-integrity.md`](temporal-integrity.md).
 
 | API group | Resource | Verbs | Why |
@@ -37,7 +37,7 @@ is documented in [`temporal-integrity.md`](temporal-integrity.md).
 | discovery.k8s.io | `endpointslices` | `list` | inspect endpoint readiness for a Service |
 | core, cluster-scoped | `nodes` | `get` | inspect pressure conditions for the exact Node hosting a collected Pod |
 
-kdiag does not request create, update, patch, delete, watch, exec, logs, metrics,
+Tuna does not request create, update, patch, delete, watch, exec, logs, metrics,
 or port-forward access.
 
 ### Operations by entry point
@@ -64,15 +64,15 @@ expresses their verb as `list`.
 
 ## Secret policy
 
-kdiag does **not** request `get`, `list`, or `watch` access to Secrets. The
+Tuna does **not** request `get`, `list`, or `watch` access to Secrets. The
 typed Kubernetes Secret GET returns the data payload, which is unnecessary for
 the current rules. A non-optional Secret reference is retained in the graph
 with existence `unknown`, and the report contains an incomplete-evidence note.
 
-This is the permanent default-policy tradeoff: kdiag will not diagnose a
+This is the permanent default-policy tradeoff: Tuna will not diagnose a
 missing Secret from an existence lookup. Even a metadata-only content request
 requires granting Secret `get`, and that RBAC permission lets the caller fetch
-the full payload outside kdiag. A future explicitly enabled metadata-only mode
+the full payload outside Tuna. A future explicitly enabled metadata-only mode
 would therefore be an additional permission and threat-model decision, not a
 silent change to this default contract.
 
@@ -85,7 +85,7 @@ the binding subject before applying it.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: kdiag-reader
+  name: tuna-reader
   namespace: NAMESPACE
 rules:
   - apiGroups: [""]
@@ -110,7 +110,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: kdiag-reader
+  name: tuna-reader
   namespace: NAMESPACE
 subjects:
   - kind: User
@@ -118,7 +118,7 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: Role
-  name: kdiag-reader
+  name: tuna-reader
   apiGroup: rbac.authorization.k8s.io
 ```
 
@@ -129,7 +129,7 @@ cluster-scoped. Grant it separately so namespaced read access is not widened:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kdiag-node-reader
+  name: tuna-node-reader
 rules:
   - apiGroups: [""]
     resources: ["nodes"]
@@ -138,25 +138,25 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kdiag-node-reader
+  name: tuna-node-reader
 subjects:
   - kind: User
     name: YOUR_KUBECONFIG_USER
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
-  name: kdiag-node-reader
+  name: tuna-node-reader
   apiGroup: rbac.authorization.k8s.io
 ```
 
-Without Node access, kdiag should continue with partial evidence rather than
+Without Node access, Tuna should continue with partial evidence rather than
 fail the inspection. Node-pressure correlation will be unavailable.
 
 Authenticated Kubernetes identities normally receive safe API discovery
 permissions from the default `system:discovery` binding. A hardened cluster
 that denies `/version` needs a ClusterRole with `nonResourceURLs: ["/version"]`
 and `verbs: ["get"]`; a namespaced Role cannot grant a non-resource endpoint.
-kdiag reports the missing permission rather than running version-scoped rules.
+Tuna reports the missing permission rather than running version-scoped rules.
 
 ## Known broad reads
 

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/leventozen/kdiag/internal/diag"
-	"github.com/leventozen/kdiag/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/diag"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
 // jsonFinding mirrors diag.Finding with causal links flattened to IDs so the

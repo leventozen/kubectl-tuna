@@ -1,13 +1,13 @@
 # Temporal integrity
 
-kdiag collects several Kubernetes resource kinds through sequential API calls.
+Tuna collects several Kubernetes resource kinds through sequential API calls.
 Those calls do not form an atomic transaction. This document defines what the
 current collector proves, what it deliberately does not claim, and why a
 blanket second collection pass is not currently the default.
 
 ## Current guarantees
 
-For every live inspection, kdiag:
+For every live inspection, Tuna:
 
 1. records collection start and completion timestamps;
 2. records the focus resource's initial `resourceVersion` and `generation`;
@@ -47,7 +47,7 @@ temporal integrity of the graph that the causal engine actually evaluates.
 
 Targeted GETs avoid broad second lists but create an N+1 request pattern. They
 also require new `get` permissions for resources that current collectors only
-need to `list`, including some Service and EndpointSlice paths. kdiag will not
+need to `list`, including some Service and EndpointSlice paths. Tuna will not
 widen its RBAC contract for an incomplete approximation of atomicity.
 
 ### Watch every relevant resource
@@ -59,7 +59,7 @@ if they were one global transaction identifier.
 
 ## Current decision
 
-kdiag does not perform a blanket second pass or request `watch` permission.
+Tuna does not perform a blanket second pass or request `watch` permission.
 The default policy is:
 
 - hard-fail diagnostic evaluation on a changed or unverifiable focus;

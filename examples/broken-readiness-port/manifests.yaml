@@ -1,20 +1,20 @@
 # Scenario: the readiness probe targets port 8080, but nginx listens on 80.
 # The Pod runs fine but never becomes Ready, so the Service gets no endpoints.
 #
-# Expected kdiag diagnosis:
+# Expected Tuna diagnosis:
 #   root cause:  readiness-probe-port-mismatch
 #   chain:       readiness-probe-port-mismatch → readiness-probe-failing
 #                → pod-not-ready → service-no-ready-endpoints
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: kdiag-demo
+  name: tuna-demo
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: payment
-  namespace: kdiag-demo
+  namespace: tuna-demo
 spec:
   replicas: 1
   selector:
@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: nginx:1.27-alpine
+          image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
           ports:
             - name: http
               containerPort: 80
@@ -41,7 +41,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: payment
-  namespace: kdiag-demo
+  namespace: tuna-demo
 spec:
   selector:
     app: payment

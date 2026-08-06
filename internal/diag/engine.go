@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/leventozen/kdiag/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
 // Rule evaluates the resource graph and reports zero or more findings.

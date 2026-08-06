@@ -1,6 +1,6 @@
 # Validation corpus
 
-kdiag's corpus is a labeled regression set for diagnostic outcomes. Its job is
+Tuna's corpus is a labeled regression set for diagnostic outcomes. Its job is
 to make wrong roots, missed roots, false degradation, and hidden uncertainty
 reproducible. It is not a collection of examples for inflating an accuracy
 number.
@@ -37,7 +37,7 @@ expected diagnosis is also present.
 
 ## E2E evidence artifacts
 
-Every CI Kubernetes-minor job uploads one `kdiag-e2e-kubernetes-*` artifact.
+Every CI Kubernetes-minor job uploads one `tuna-e2e-kubernetes-*` artifact.
 It contains the exact API server build data, distribution label, Node kubelet
 versions, container runtimes, operating-system details, and the JSON result for
 each completed scenario phase. The expectations remain in the executable e2e
@@ -58,11 +58,11 @@ A durable real-cluster case should contain:
 2. exact focus kind, namespace alias, and name alias;
 3. API server version, distribution, Node kubelet versions, and container
    runtime when they were observable;
-4. sanitized typed API objects used by kdiag, including Events and collection
+4. sanitized typed API objects used by Tuna, including Events and collection
    failures; raw `describe` output may be retained as operator context but is
    not a substitute for typed evidence;
 5. expected health, partial state, exact root-cause types, and a short human
-   rationale established independently of kdiag's output;
+   rationale established independently of Tuna's output;
 6. recovery or healthy-control evidence whenever the incident permits it.
 
 Secrets must never enter the repository. Remove payloads, tokens, addresses,

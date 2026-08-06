@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/leventozen/kdiag/internal/diag"
-	"github.com/leventozen/kdiag/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/diag"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
 const (

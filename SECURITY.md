@@ -2,7 +2,7 @@
 
 ## Project status
 
-kdiag is experimental, pre-release software. There are no supported versions
+Tuna is experimental, pre-release software. There are no supported versions
 or published release artifacts yet. Security fixes currently land on `main`;
 this does not make `main` a supported production release.
 
@@ -12,7 +12,7 @@ Please do not open a public issue for a suspected vulnerability.
 
 Use GitHub's private vulnerability reporting flow:
 
-<https://github.com/leventozen/kdiag/security/advisories/new>
+<https://github.com/leventozen/kubectl-tuna/security/advisories/new>
 
 Include the affected commit, impact, reproduction steps, and any proposed
 mitigation. If the report involves Kubernetes evidence, remove credentials,
@@ -26,13 +26,13 @@ Please allow time for a fix before public disclosure.
 
 ## Security boundaries
 
-kdiag is intended to be read-only, but read access to Kubernetes metadata can
+Tuna is intended to be read-only, but read access to Kubernetes metadata can
 still expose sensitive operational details. The current collector does not
 fetch Secret objects, execute commands in containers, read logs, or send
 telemetry to an external service. Review the documented RBAC contract before
 using it against a cluster:
 
-<https://github.com/leventozen/kdiag/blob/main/docs/rbac.md>
+<https://github.com/leventozen/kubectl-tuna/blob/main/docs/rbac.md>
 
 Reports about incorrect diagnosis are also important, especially a confident
 false root cause or a failure to represent unavailable evidence as `unknown`.

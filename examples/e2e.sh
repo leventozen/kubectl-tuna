@@ -10,14 +10,14 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$DIR")"
-KDIAG="$ROOT/bin/kdiag"
-ARTIFACT_DIR="${KDIAG_E2E_ARTIFACT_DIR:-$ROOT/artifacts/e2e}"
-E2E_DISTRIBUTION="${KDIAG_E2E_DISTRIBUTION:-unknown}"
-E2E_CLUSTER_NAME="${KDIAG_E2E_CLUSTER_NAME:-unknown}"
+TUNA_BIN="$ROOT/bin/kubectl-tuna"
+ARTIFACT_DIR="${TUNA_E2E_ARTIFACT_DIR:-$ROOT/artifacts/e2e}"
+E2E_DISTRIBUTION="${TUNA_E2E_DISTRIBUTION:-unknown}"
+E2E_CLUSTER_NAME="${TUNA_E2E_CLUSTER_NAME:-unknown}"
 
 mkdir -p "$ARTIFACT_DIR/cases"
 
-go build -o "$KDIAG" "$ROOT/cmd/kdiag"
+go build -o "$TUNA_BIN" "$ROOT/cmd/kubectl-tuna"
 
 echo "Kubernetes environment under test"
 kubectl version -o json
@@ -113,7 +113,7 @@ check() {
 	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
 		sleep 5
 		set +e
-		out="$("$KDIAG" inspect "$kind" "$name" -n kdiag-demo -o json 2>/dev/null)"
+		out="$("$TUNA_BIN" inspect "$kind" "$name" -n tuna-demo -o json 2>/dev/null)"
 		status=$?
 		set -e
 		# 2 = findings present; anything else means not broken (yet) or error
@@ -147,11 +147,11 @@ for f in res.get('findings',[]):
 		fi
 		# Cluster breadcrumbs help debug flaky scenarios (OOM timing, image pulls).
 		echo "--- cluster status ---"
-		kubectl get pods -n kdiag-demo -o wide 2>/dev/null || true
-		kubectl get events -n kdiag-demo --sort-by=.lastTimestamp 2>/dev/null | tail -20 || true
+		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
+		kubectl get events -n tuna-demo --sort-by=.lastTimestamp 2>/dev/null | tail -20 || true
 		fail=1
 	fi
-	kubectl delete namespace kdiag-demo --wait >/dev/null
+	kubectl delete namespace tuna-demo --wait >/dev/null
 }
 
 check_healthy() {
@@ -164,7 +164,7 @@ check_healthy() {
 	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
 		sleep 5
 		set +e
-		out="$("$KDIAG" inspect "$kind" "$name" -n kdiag-demo -o json 2>/dev/null)"
+		out="$("$TUNA_BIN" inspect "$kind" "$name" -n tuna-demo -o json 2>/dev/null)"
 		status=$?
 		set -e
 		if [ "$status" -eq 0 ] && echo "$out" | strictly_healthy; then
@@ -182,7 +182,7 @@ check_healthy() {
 		[ -n "$out" ] && echo "$out"
 		fail=1
 	fi
-	kubectl delete namespace kdiag-demo --wait >/dev/null
+	kubectl delete namespace tuna-demo --wait >/dev/null
 }
 
 check_recovery() {
@@ -195,7 +195,7 @@ check_recovery() {
 	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
 		sleep 5
 		set +e
-		out="$("$KDIAG" inspect "$kind" "$name" -n kdiag-demo -o json 2>/dev/null)"
+		out="$("$TUNA_BIN" inspect "$kind" "$name" -n tuna-demo -o json 2>/dev/null)"
 		status=$?
 		set -e
 		[ "$status" -ne 2 ] && continue
@@ -208,13 +208,13 @@ check_recovery() {
 	write_case_result "$scenario-broken" "$out"
 
 	if [ "$broken" = "PASS" ]; then
-		kubectl patch deployment payment -n kdiag-demo --type=json \
+		kubectl patch deployment payment -n tuna-demo --type=json \
 			-p='[{"op":"replace","path":"/spec/template/spec/containers/0/readinessProbe/httpGet/port","value":80}]' >/dev/null
 		start=$SECONDS
 		while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
 			sleep 5
 			set +e
-			out="$("$KDIAG" inspect "$kind" "$name" -n kdiag-demo -o json 2>/dev/null)"
+			out="$("$TUNA_BIN" inspect "$kind" "$name" -n tuna-demo -o json 2>/dev/null)"
 			status=$?
 			set -e
 			if [ "$status" -eq 0 ] && echo "$out" | strictly_healthy; then
@@ -225,7 +225,7 @@ check_recovery() {
 		write_case_result "$scenario-recovered" "$out"
 	fi
 
-	kubectl delete namespace kdiag-demo --wait >/dev/null
+	kubectl delete namespace tuna-demo --wait >/dev/null
 
 	if [ "$broken" = "PASS" ] && [ "$recovered" = "PASS" ]; then
 		echo "PASS: exact root '$expected_root', then strictly healthy after repair"

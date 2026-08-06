@@ -3,7 +3,7 @@ package diag
 import (
 	"sort"
 
-	"github.com/leventozen/kdiag/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
 // causalRule couples a Kubernetes mechanism with the exact graph relation it

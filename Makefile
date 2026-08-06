@@ -1,11 +1,10 @@
-.PHONY: build test vet benchmark corpus e2e demo install-plugin release-snapshot demo-output demo-gif
+.PHONY: build test vet benchmark corpus e2e demo install-plugin demo-output demo-gif
 
 PREFIX ?= $(HOME)/.local
 BIN_DIR ?= $(PREFIX)/bin
 
 build:
-	go build -o bin/kdiag ./cmd/kdiag
-	go build -o bin/kubectl-diag ./cmd/kdiag
+	go build -o bin/kubectl-tuna ./cmd/kubectl-tuna
 
 test:
 	go test ./...
@@ -23,12 +22,12 @@ benchmark:
 corpus:
 	go test ./internal/diag -run '^TestSeedCorpusExpectations$$' -v
 
-# Install as a kubectl plugin on PATH → `kubectl diag …`
+# Install as a kubectl plugin on PATH → `kubectl tuna …`
 install-plugin: build
 	mkdir -p "$(BIN_DIR)"
-	install -m 755 bin/kubectl-diag "$(BIN_DIR)/kubectl-diag"
-	@echo "installed $(BIN_DIR)/kubectl-diag"
-	@echo "ensure $(BIN_DIR) is on PATH, then: kubectl diag --help"
+	install -m 755 bin/kubectl-tuna "$(BIN_DIR)/kubectl-tuna"
+	@echo "installed $(BIN_DIR)/kubectl-tuna"
+	@echo "ensure $(BIN_DIR) is on PATH, then: kubectl tuna --help"
 
 # Requires kubectl pointing at a disposable cluster (e.g. kind create cluster)
 e2e:
@@ -37,10 +36,6 @@ e2e:
 # make demo SCENARIO=broken-readiness-port
 demo:
 	./examples/run-demo.sh $(SCENARIO)
-
-# Snapshot release artifacts + generated krew manifest (dist/diag.yaml)
-release-snapshot:
-	goreleaser release --snapshot --clean
 
 # Regenerate the deterministic fixture report used by the GIF.
 demo-output:

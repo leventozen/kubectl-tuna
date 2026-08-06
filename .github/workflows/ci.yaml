@@ -13,11 +13,12 @@ jobs:
     name: Build and unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - run: go vet ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - run: go build ./...
       - run: go test -race ./... -v
 
@@ -36,27 +37,27 @@ jobs:
           - kubernetes: "1.36.1"
             node_image: "kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - name: Create Kind cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
-          cluster_name: kdiag-e2e
+          cluster_name: tuna-e2e
           version: v0.32.0
           node_image: ${{ matrix.node_image }}
       - name: Run e2e scenarios
         env:
-          KDIAG_E2E_ARTIFACT_DIR: artifacts/e2e
-          KDIAG_E2E_DISTRIBUTION: kind
-          KDIAG_E2E_CLUSTER_NAME: kdiag-e2e
+          TUNA_E2E_ARTIFACT_DIR: artifacts/e2e
+          TUNA_E2E_DISTRIBUTION: kind
+          TUNA_E2E_CLUSTER_NAME: tuna-e2e
         run: ./examples/e2e.sh
       - name: Upload e2e evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: kdiag-e2e-kubernetes-${{ matrix.kubernetes }}
+          name: tuna-e2e-kubernetes-${{ matrix.kubernetes }}
           path: artifacts/e2e
           if-no-files-found: error
           retention-days: 30

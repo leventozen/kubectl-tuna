@@ -18,9 +18,9 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	clienttesting "k8s.io/client-go/testing"
 
-	"github.com/leventozen/kdiag/internal/diag"
-	"github.com/leventozen/kdiag/internal/graph"
-	"github.com/leventozen/kdiag/internal/kube"
+	"github.com/leventozen/kubectl-tuna/internal/diag"
+	"github.com/leventozen/kubectl-tuna/internal/graph"
+	"github.com/leventozen/kubectl-tuna/internal/kube"
 )
 
 func TestEndpointSliceFailureProducesUnknownHealth(t *testing.T) {

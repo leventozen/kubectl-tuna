@@ -3,7 +3,7 @@
 
 The GIF is a compact, readable terminal session:
   1. type the command
-  2. print the exact kdiag console report (no abbreviated copy)
+  2. print the exact Tuna console report (no abbreviated copy)
   3. scroll like a terminal when the report exceeds the viewport
 """
 
@@ -26,8 +26,8 @@ TITLE_BG = (22, 27, 34)
 BORDER = (48, 54, 61)
 DOT_R, DOT_Y, DOT_G = (255, 95, 86), (255, 189, 46), (39, 201, 63)
 
-PROMPT = "~/code/kdiag"
-CMD = "kdiag inspect service payment -n kdiag-demo"
+PROMPT = "~/code/kubectl-tuna"
+CMD = "kubectl tuna inspect service payment -n tuna-demo"
 
 # Approximate terminal colors used by internal/report/console.go (no-color=false).
 C_DEFAULT = (201, 209, 217)
@@ -65,7 +65,7 @@ def ensure_demo_output() -> str:
             return text
 
     env = os.environ.copy()
-    env["KDIAG_DEMO"] = "1"
+    env["TUNA_DEMO"] = "1"
     proc = subprocess.run(
         ["go", "test", "./internal/diag", "-run", "TestRenderDemo", "-v"],
         cwd=ROOT,
@@ -170,7 +170,7 @@ def draw_chrome(draw: ImageDraw.ImageDraw, f: ImageFont.ImageFont) -> None:
     draw.rectangle((0, 18, W - 1, 36), fill=TITLE_BG)
     for x, c in ((22, DOT_R), (42, DOT_Y), (62, DOT_G)):
         draw.ellipse((x - 6, 12, x + 6, 24), fill=c)
-    draw.text((W // 2, 10), "Terminal — kdiag", fill=C_DIM, font=f, anchor="mt")
+    draw.text((W // 2, 10), "Terminal — Tuna", fill=C_DIM, font=f, anchor="mt")
 
 
 def measure(draw: ImageDraw.ImageDraw, text: str, f: ImageFont.ImageFont) -> int:
