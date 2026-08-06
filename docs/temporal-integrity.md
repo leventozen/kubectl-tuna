@@ -100,3 +100,31 @@ discovery. Payload and local allocation are linear in namespace Service count.
 A real-cluster benchmark must add API-server latency, serialization, transport,
 throttling, and distribution behavior before an optimization or second-pass
 policy is selected.
+
+### Exploratory live Kind probe — weak evidence
+
+On 2026-08-06, the same Pod-focus path was sampled five times per size against
+a local, single-node Kind v0.32.0 cluster running Kubernetes v1.36.1. The
+collector and API server ran on the same Apple M4 host. Object creation was
+excluded from the measured interval.
+
+| Namespace Services | Median | Slowest sample (not p95) | Median response payload | Service LIST payload | Requests |
+|---:|---:|---:|---:|---:|---:|
+| 10 | 5.08 ms | 5.28 ms | 10.8 KiB | 5.0 KiB | 6 |
+| 1,000 | 34.5 ms | 43.0 ms | 501 KiB | 495 KiB | 6 |
+| 5,000 | 28.9 ms | 54.3 ms | 2.48 MiB | 2.42 MiB | 6 |
+
+This is an exploratory baseline, not a performance result suitable for release
+claims or capacity planning. Five warm local samples cannot characterize tail
+latency; the non-monotonic medians demonstrate the noise. The generated
+Services were synthetic, mostly selectorless, and the cluster had no realistic
+concurrent load, admission stack, API Priority and Fairness contention,
+throttling, network distance, or managed-control-plane behavior.
+
+The useful observations are deliberately narrow: the request count stayed at
+six, the Service LIST payload grew approximately linearly, and no urgent local
+latency bottleneck appeared. The sixth request was the GET for Kind's injected
+`kube-root-ca.crt` projected ConfigMap, which the fake-client fixture does not
+contain. These results justify neither a production performance claim nor an
+approximate reverse-selector implementation. A larger benchmark campaign is
+deferred until real timeouts, throttling, or operator reports make it relevant.

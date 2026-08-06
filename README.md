@@ -415,6 +415,12 @@ Kubernetes 1.34.8, 1.35.5, and 1.36.1, and the configured matrix has been
 observed green. The provisional support gate remains open for corpus precision,
 environment diversity, and external-operator validation.
 
+`make corpus` runs the machine-readable seed-corpus contract. Its current eight
+snapshots are author-constructed fake-client fixtures, not real-cluster
+evidence; one is a healthy control. Evidence classes, case-acceptance rules,
+and the intentionally still-open 25-case/10-control target are documented in
+[`docs/corpus.md`](docs/corpus.md).
+
 ## Current limitations
 
 - Only Service, Deployment, and Pod are valid inspection entry points.

@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "fixture-broken-readiness-port",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "broken-readiness-port",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["traffic", "readiness", "causal-chain"],
+      "limitations": ["author-constructed", "fake-client", "no-api-server-behavior"],
+      "inspections": [
+        {
+          "focus": {"kind": "service", "namespace": "finance", "name": "payment"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["readiness-probe-port-mismatch"]}
+        },
+        {
+          "focus": {"kind": "pod", "namespace": "finance", "name": "payment-7b889d-x8p2"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["readiness-probe-port-mismatch"]}
+        }
+      ]
+    },
+    {
+      "id": "fixture-service-selector-no-pods",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "service-selector-mismatch",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["traffic", "selector", "negative-intent-inference"],
+      "limitations": ["author-constructed", "fake-client", "no-api-server-behavior"],
+      "inspections": [
+        {
+          "focus": {"kind": "service", "namespace": "production", "name": "checkout-api"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["service-selector-no-pods"]}
+        }
+      ]
+    },
+    {
+      "id": "fixture-container-oomkilled",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "oomkilled",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["container", "memory", "rollout"],
+      "limitations": ["author-constructed", "fake-client", "no-kubelet-behavior"],
+      "inspections": [
+        {
+          "focus": {"kind": "deployment", "namespace": "finance", "name": "billing"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["container-oomkilled"]}
+        }
+      ]
+    },
+    {
+      "id": "fixture-failed-scheduling",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "failed-scheduling",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["scheduling", "resources"],
+      "limitations": ["author-constructed", "fake-client", "event-message-dependent"],
+      "inspections": [
+        {
+          "focus": {"kind": "deployment", "namespace": "data", "name": "analytics"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["pod-unschedulable"]}
+        }
+      ]
+    },
+    {
+      "id": "fixture-missing-configmap",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "missing-configmap",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["configuration", "projected-reference"],
+      "limitations": ["author-constructed", "fake-client", "no-api-server-behavior"],
+      "inspections": [
+        {
+          "focus": {"kind": "deployment", "namespace": "messaging", "name": "notifier"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["missing-config-reference"]}
+        }
+      ]
+    },
+    {
+      "id": "fixture-ambiguous-sigkill",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "oomkilled-implicit",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["container", "memory", "ambiguity"],
+      "limitations": ["author-constructed", "fake-client", "no-kubelet-behavior"],
+      "inspections": [
+        {
+          "focus": {"kind": "deployment", "namespace": "jobs", "name": "worker"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["container-sigkill"]}
+        }
+      ]
+    },
+    {
+      "id": "fixture-evicted-pod",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "evicted-pod",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["eviction", "node-pressure", "cross-resource-root"],
+      "limitations": ["author-constructed", "fake-client", "event-message-dependent"],
+      "inspections": [
+        {
+          "focus": {"kind": "pod", "namespace": "prod", "name": "cache-7f9c2-b4xk1"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["node-pressure"]}
+        }
+      ]
+    },
+    {
+      "id": "fixture-healthy-service",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "healthy-service",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["healthy-control", "traffic"],
+      "limitations": ["author-constructed", "fake-client", "no-api-server-behavior"],
+      "inspections": [
+        {
+          "focus": {"kind": "service", "namespace": "default", "name": "web"},
+          "expected": {"health": "healthy", "partial": false, "rootCauseTypes": []}
+        }
+      ]
+    }
+  ]
+}

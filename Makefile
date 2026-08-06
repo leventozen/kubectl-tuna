@@ -1,4 +1,4 @@
-.PHONY: build test vet benchmark e2e demo install-plugin release-snapshot demo-output demo-gif
+.PHONY: build test vet benchmark corpus e2e demo install-plugin release-snapshot demo-output demo-gif
 
 PREFIX ?= $(HOME)/.local
 BIN_DIR ?= $(PREFIX)/bin
@@ -18,6 +18,10 @@ vet:
 # than API-server or network latency.
 benchmark:
 	go test ./internal/kube -run '^$$' -bench BenchmarkCollectPodServiceNamespace -benchmem
+
+# Validate every labeled seed-corpus case through the collector and engine.
+corpus:
+	go test ./internal/diag -run '^TestSeedCorpusExpectations$$' -v
 
 # Install as a kubectl plugin on PATH → `kubectl diag …`
 install-plugin: build

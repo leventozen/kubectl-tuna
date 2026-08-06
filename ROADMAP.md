@@ -40,16 +40,13 @@ symptom, and evidence kdiag could not collect.
 The latest trust audit puts evidence quality ahead of new resource families or
 external rule formats:
 
-1. Run the new namespace Service benchmark against real API servers and record
-   latency, payload, throttling, and timeout/partial-result behavior. The local
-   fake-client cost and exact request count are now reproducible.
-2. Build a labeled corpus with at least 25 realistic cases, including at least
+1. Build a labeled corpus with at least 25 realistic cases, including at least
    10 healthy/recovered controls and positive/negative coverage for every rule.
-3. Include active rollouts and rapidly changing Pod/EndpointSlice cases; use
+2. Include active rollouts and rapidly changing Pod/EndpointSlice cases; use
    them to decide whether dependency-aware revision verification is necessary.
-4. Validate results with 3–5 external operators and turn every wrong or missed
+3. Validate results with 3–5 external operators and turn every wrong or missed
    diagnosis into a regression case.
-5. Stabilize the JSON/evidence contract only after the corpus exposes which
+4. Stabilize the JSON/evidence contract only after the corpus exposes which
    fields integrations actually need; external rule packs remain later.
 
 ## Gate A — Reliability baseline (in progress)
@@ -117,13 +114,14 @@ Still required:
 - [x] Remove the namespace-wide candidate-Deployment list and the heuristic
   `service-selector-mismatch` claim. Report the factual
   `service-selector-no-pods` state without guessing operator intent.
-- [ ] Measure and reduce the remaining namespace-wide Service list used for
+- [x] Measure the remaining namespace-wide Service list used for
   reverse selector discovery on Deployment and Pod entry points. Kubernetes
   exposes no reliable server-side query over `Service.spec.selector`, so a
-  narrower implementation must not approximate with metadata labels. Record
-  API call count, payload size, collection duration, and timeout/partial
-  behavior against small and large namespaces on real API servers before
-  choosing an optimization; the reproducible local baseline is complete below.
+  narrower implementation must not approximate with metadata labels. A small,
+  local Kind probe found linear response payload growth but no urgent latency
+  signal; its sample size and environment are too weak for production claims.
+  Keep the correct single LIST until field evidence, timeouts, or throttling
+  justify reopening optimization work.
 - [x] Add an exact Pod-focus request-budget test and reproducible fake-client
   benchmark for namespaces with 10, 1,000, and 5,000 Services. The benchmark
   reports approximate ServiceList size and local time/allocation growth; it
@@ -179,6 +177,10 @@ whether the model survives Kubernetes behavior it was not authored around.
   1.35.5, and 1.36.1, running the exact same e2e contract on each. The gate
   is now mechanically green; corpus precision and environment diversity remain
   open and are not implied by that result.
+- [x] Add a machine-readable seed-corpus manifest and harness that asserts
+  exact root-cause sets, health, and partial state across existing fixtures.
+  All eight snapshots are explicitly labeled `synthetic-fixture`; they do not
+  count as real-cluster validation or satisfy the corpus-size target.
 - [ ] Persist the exact API server version, Node kubelet versions, container
   runtime, and distribution as machine-readable artifacts for every
   corpus/e2e case. CI logs already print API server, kubelet, and runtime data;
@@ -299,6 +301,10 @@ These are not current work:
 - AI explanation. If added later, it may explain structured findings but must
   never create or upgrade them.
 - TUI, broad observability features, automated remediation, and cluster writes.
+- A larger namespace-Service performance campaign. The exploratory local Kind
+  sample is not production evidence and did not reveal an urgent bottleneck;
+  repeat on remote, throttled, or managed clusters only when field data makes
+  this a real problem.
 
 ## Decision log
 
@@ -320,6 +326,7 @@ These are not current work:
 | Suspend on focus transition or stale Deployment generation | Sequential GET/LIST calls can span a rollout; mixed-time evidence cannot support a trust-first diagnosis. |
 | Focus stability is not an atomic snapshot claim | Kubernetes does not provide a single transaction across the resource kinds kdiag reads; the related-resource boundary remains explicit and must be challenged by active-rollout corpus cases. |
 | No blanket second collection pass | Partial revalidation creates false assurance; a full pass doubles broad reads and volatile evidence calls. Corpus evidence must justify dependency-aware revalidation first. |
+| Keep one namespace-wide Service LIST for now | Kubernetes has no reliable reverse selector query. A weak local baseline showed linear payload growth but no urgent latency problem, so correctness beats speculative optimization until field evidence says otherwise. |
 
 ## Success signals
 

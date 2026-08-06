@@ -21,6 +21,8 @@ import (
 	"github.com/leventozen/kdiag/internal/report"
 )
 
+const fixtureKubernetesVersion = "v1.36.2"
+
 // evaluateScenario loads every YAML manifest under testdata/<scenario> into
 // a fake clientset, runs the collector for the focus resource, and evaluates
 // the diagnostic engine — the same path a live inspection takes.
@@ -50,7 +52,7 @@ func evaluateScenario(t *testing.T, scenario, focusKind, namespace, name string)
 	}
 
 	client := fake.NewClientset(objs...)
-	client.Discovery().(*fakediscovery.FakeDiscovery).FakedServerVersion = &versioninfo.Info{GitVersion: "v1.36.2"}
+	client.Discovery().(*fakediscovery.FakeDiscovery).FakedServerVersion = &versioninfo.Info{GitVersion: fixtureKubernetesVersion}
 	collector := kube.NewCollector(client)
 	ctx := context.Background()
 
