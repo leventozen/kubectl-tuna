@@ -44,10 +44,10 @@ product validation:
   contracts.
 - Eight author-constructed fixture snapshots provide nine inspections and one
   healthy control.
-- Five author-constructed Kind scenarios provide six phases and only four
-  distinct live root-cause patterns. Repeating them across three Kubernetes
-  minors validates compatibility mechanics; it does not create 18 independent
-  cases.
+- Six author-constructed Kind scenarios provide seven phases: four distinct
+  live root-cause patterns, one healthy control, one recovery phase, and one
+  incomplete-RBAC abstention. Repeating them across three Kubernetes minors
+  validates compatibility mechanics; it does not create 21 independent cases.
 - There are no sanitized field incidents and no completed external-operator
   trials yet.
 
@@ -58,17 +58,18 @@ operators the author did not construct.
 
 ## Current execution order
 
-1. Complete the minimum soft-public blockers below, push the full current work,
-   and require the three-minor CI matrix to pass.
-2. Make the source repository soft-public without presenting it as a release,
-   supported version, Krew-ready plugin, or finished diagnostic platform.
-3. In parallel after visibility, prepare a friction-light evaluator path:
+1. Keep the public source explicitly experimental: no supported version, Krew
+   submission, or broad public-alpha announcement yet.
+2. Run owner-led field tests on clusters and failures not encoded as fixtures.
+   Record these as author observations, not independent validation.
+3. Complete deterministic incomplete-RBAC coverage and then work through the
+   remaining non-racy real-cluster boundary cases in Gate B2.
+4. Prepare a friction-light evaluator path without actively recruiting yet:
    unsigned snapshot binaries with checksums, a minimal evaluator guide,
    `CONTRIBUTING.md`, a feedback template, and an explicit Go toolchain policy.
-4. Add deterministic incomplete-RBAC live reproduction and refresh each
-   maintained minor to its latest patch. Do not create a rollout test that
-   races controllers and passes only by timing luck.
-5. Start operator trials without waiting for 25 self-authored cases. Treat
+5. Start external operator trials after the owner-led pass and evaluator path
+   are usable. This is a sequencing delay, not a replacement for independent
+   validation. Treat
    every rejected root, miss, confusing `unknown`, permission objection, and
    installation failure as product evidence; grow the trial to 3–5 operators
    and build the labeled corpus iteratively with them.
@@ -78,7 +79,7 @@ operators the author did not construct.
 
 ## Publication plan
 
-### Soft-public preparation — in progress
+### Soft-public source — complete
 
 “Soft-public” means the source repository becomes visible and can be shared
 directly with selected Kubernetes operators. It does **not** mean a supported
@@ -98,8 +99,9 @@ Open it as soon as these minimum safety and honesty blockers are complete:
   become public. Credential, kubeconfig, and private-incident scans are clean;
   commit author and committer e-mails have been rewritten to the maintainer's
   GitHub noreply address.
-- [ ] GitHub repository description, license display, and default-branch
-  protection are ready for outside readers and contributors.
+- [x] GitHub repository description, license display, private vulnerability
+  reporting, secret scanning/push protection, and default-branch protection
+  are ready for outside readers and contributors.
 
 These are important but do not block source visibility; complete them in
 parallel after soft-public:
@@ -110,10 +112,12 @@ parallel after soft-public:
   with checksums and an explicit “unreleased/unsupported” label.
 - [ ] `CONTRIBUTING.md`, evaluator instructions, anonymization guidance,
   structured feedback/incident templates, topics, and issue templates exist.
-- [ ] Deterministic incomplete-RBAC behavior has a real-cluster reproduction;
+- [x] Deterministic incomplete-RBAC behavior has a real-cluster reproduction;
   partial evidence must not become false absence.
-- [ ] Operator trials are running and every factual or severe usability failure
-  is becoming a regression case or explicit roadmap decision.
+- [ ] External operator outreach is intentionally paused until the owner-led
+  field pass and evaluator path are usable. Once started, every factual or
+  severe usability failure becomes a regression case or explicit roadmap
+  decision.
 
 A broad public-alpha announcement still requires Gate B's minimum independent
 evidence. Version tags and Krew remain behind Gates B and C.
@@ -269,12 +273,15 @@ whether the model survives Kubernetes behavior it was not authored around.
   lifetime. Ephemeral workflow artifacts improve debugging but are not a
   durable validation corpus.
 
-### Gate B2 — Independent precision and usefulness (not started)
+### Gate B2 — Independent precision and usefulness (started internally)
 
-- [ ] Run deterministic live reproductions for incomplete RBAC, stale Events,
-  multi-container Pods, multiple workloads behind one Service, multiple
-  ReplicaSets, and a recovery/rollout boundary. Rapid-change observations may
-  be non-gating; do not encode a controller race as a deterministic test.
+- [x] Run a deterministic incomplete-RBAC live reproduction using a restricted
+  ServiceAccount. Denied EndpointSlice evidence must produce `unknown` health,
+  one explicit warning, and no false zero-endpoint finding.
+- [ ] Add deterministic stale-Event, multi-container Pod, multiple-workloads-
+  behind-one-Service, and multiple-ReplicaSet live reproductions. Keep a
+  recovery/rollout boundary non-gating if controller timing cannot be made
+  deterministic; do not encode a race as a passing contract.
 - [ ] Run structured trials with 3–5 external operators. Record installation
   friction, useful chains, false roots, misses, abstentions, partial evidence,
   collection time, and whether Tuna shortened diagnosis.

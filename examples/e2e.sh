@@ -91,6 +91,35 @@ raise SystemExit(0 if ok else 1)
 '
 }
 
+matches_incomplete_rbac_contract() {
+	python3 -c '
+import json, sys
+res = json.load(sys.stdin)
+warnings = res.get("warnings", [])
+endpoint_warnings = [
+    warning for warning in warnings
+    if warning.get("source") == "endpointslices"
+    and warning.get("affectsHealth") is True
+    and "forbidden" in warning.get("message", "").lower()
+]
+warning_sources = sorted(warning.get("source") for warning in warnings)
+false_absence = any(
+    finding.get("type") == "service-no-ready-endpoints"
+    for finding in res.get("findings", [])
+)
+ok = (
+    res.get("health") == "unknown"
+    and res.get("partial") is True
+    and res.get("findings") == []
+    and res.get("rootCauses") == []
+    and warning_sources == ["endpointslices"]
+    and len(endpoint_warnings) == 1
+    and not false_absence
+)
+raise SystemExit(0 if ok else 1)
+'
+}
+
 matches_broken_contract() {
 	local expected_roots="$1"
 	python3 -c '
@@ -185,6 +214,67 @@ check_healthy() {
 	kubectl delete namespace tuna-demo --wait >/dev/null
 }
 
+check_incomplete_rbac() {
+	local scenario="incomplete-rbac" deadline_s=120
+	echo "=== scenario: $scenario (healthy resource, EndpointSlice RBAC denied) ==="
+	kubectl apply -f "$DIR/$scenario/manifests.yaml" >/dev/null
+
+	local start=$SECONDS out="" status=1 ready="FAIL"
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		set +e
+		out="$("$TUNA_BIN" inspect service healthy-api -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 0 ] && echo "$out" | strictly_healthy; then
+			ready="PASS"
+			break
+		fi
+	done
+
+	if [ "$ready" != "PASS" ]; then
+		echo "FAIL: incomplete-RBAC control never became strictly healthy with admin credentials"
+		[ -n "$out" ] && echo "$out"
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		kubectl delete clusterrolebinding tuna-e2e-node-reader --ignore-not-found >/dev/null
+		kubectl delete clusterrole tuna-e2e-node-reader --ignore-not-found >/dev/null
+		return
+	fi
+
+	local restricted_kubeconfig cluster token result="FAIL"
+	restricted_kubeconfig="$(mktemp)"
+	kubectl config view --minify --raw --flatten >"$restricted_kubeconfig"
+	cluster="$(kubectl config view --minify -o jsonpath='{.contexts[0].context.cluster}')"
+	token="$(kubectl create token tuna-limited -n tuna-demo --duration=10m)"
+	kubectl config set-credentials tuna-limited --token="$token" --kubeconfig="$restricted_kubeconfig" >/dev/null
+	kubectl config set-context tuna-limited --cluster="$cluster" --user=tuna-limited --namespace=tuna-demo \
+		--kubeconfig="$restricted_kubeconfig" >/dev/null
+	kubectl config use-context tuna-limited --kubeconfig="$restricted_kubeconfig" >/dev/null
+
+	set +e
+	out="$("$TUNA_BIN" --kubeconfig "$restricted_kubeconfig" inspect service healthy-api -n tuna-demo -o json 2>/dev/null)"
+	status=$?
+	set -e
+	write_case_result "$scenario" "$out"
+	if [ "$status" -eq 1 ] && echo "$out" | matches_incomplete_rbac_contract; then
+		result="PASS"
+	fi
+
+	rm -f "$restricted_kubeconfig"
+	kubectl delete namespace tuna-demo --wait >/dev/null
+	kubectl delete clusterrolebinding tuna-e2e-node-reader --ignore-not-found >/dev/null
+	kubectl delete clusterrole tuna-e2e-node-reader --ignore-not-found >/dev/null
+
+	if [ "$result" = "PASS" ]; then
+		echo "PASS: denied EndpointSlice evidence produced unknown health without a false finding"
+	else
+		echo "FAIL: incomplete-RBAC contract was not met (exit: $status)"
+		[ -n "$out" ] && echo "$out"
+		fail=1
+	fi
+}
+
 check_recovery() {
 	local scenario="$1" kind="$2" name="$3" deadline_s="$4" expected_root="$5"
 
@@ -238,6 +328,7 @@ check_recovery() {
 
 check_recovery broken-readiness-port service payment 120 readiness-probe-port-mismatch
 check_healthy healthy-service service healthy-api 120
+check_incomplete_rbac
 check service-selector-mismatch service checkout-api 90 service-selector-no-pods
 check failed-scheduling deployment analytics 90 pod-unschedulable
 check oomkilled deployment billing 240 container-oomkilled

@@ -184,11 +184,14 @@ make demo SCENARIO=failed-scheduling
 ```
 
 The four broken scenarios run against Kind in `examples/e2e.sh`, together with
-a strict healthy control and a broken-to-recovered readiness flow. Additional
-fixture and adversarial tests cover healthy state, missing ConfigMaps,
-ambiguous SIGKILL signals, eviction, EndpointSlice semantics, API failures,
-cross-workload correlation, cross-container correlation, and deterministic
-JSON output. CI runs the same suite with digest-pinned Kind images for
+a strict healthy control, a broken-to-recovered readiness flow, and a healthy
+Service inspected through an identity that is deliberately denied
+EndpointSlice access. The RBAC case must return `unknown` with explicit partial
+evidence and no false zero-endpoint finding. Additional fixture and adversarial
+tests cover healthy state, missing ConfigMaps, ambiguous SIGKILL signals,
+eviction, EndpointSlice semantics, API failures, cross-workload correlation,
+cross-container correlation, and deterministic JSON output. CI runs the same
+suite with digest-pinned Kind images for
 Kubernetes 1.34.8, 1.35.5, and 1.36.1, and the configured matrix has been
 observed green. The provisional support gate remains open for corpus precision,
 environment diversity, and external-operator validation.
