@@ -35,24 +35,93 @@ symptom, and evidence kdiag could not collect.
    visible; proven transition windows suspend diagnosis instead of producing a
    mixed-time causal chain.
 
+## Current status
+
+kdiag has a strong internal reliability baseline but almost no independent
+product validation:
+
+- 15 built-in rules own 17 finding types with direct positive and negative
+  contracts.
+- Eight author-constructed fixture snapshots provide nine inspections and one
+  healthy control.
+- Five author-constructed Kind scenarios provide six phases and only four
+  distinct live root-cause patterns. Repeating them across three Kubernetes
+  minors validates compatibility mechanics; it does not create 18 independent
+  cases.
+- There are no sanitized field incidents and no completed external-operator
+  trials yet.
+
+The honest product status is therefore: well-engineered, narrow prototype with
+a credible thesis, not a validated diagnostic product. Further framework work
+has sharply diminishing returns until evidence comes from clusters and
+operators the author did not construct.
+
 ## Current execution order
 
-The latest trust audit puts evidence quality ahead of new resource families or
-external rule formats:
+1. Complete the minimum soft-public blockers below, push the full current work,
+   and require the three-minor CI matrix to pass.
+2. Make the source repository soft-public without presenting it as a release,
+   supported version, Krew-ready plugin, or finished diagnostic platform.
+3. In parallel after visibility, prepare a friction-light evaluator path:
+   unsigned snapshot binaries with checksums, a minimal evaluator guide,
+   `CONTRIBUTING.md`, a feedback template, and an explicit Go toolchain policy.
+4. Add deterministic incomplete-RBAC live reproduction and refresh each
+   maintained minor to its latest patch. Do not create a rollout test that
+   races controllers and passes only by timing luck.
+5. Start operator trials without waiting for 25 self-authored cases. Treat
+   every rejected root, miss, confusing `unknown`, permission objection, and
+   installation failure as product evidence; grow the trial to 3–5 operators
+   and build the labeled corpus iteratively with them.
+6. Stabilize the JSON/evidence result contract only after the corpus exposes
+   which fields real consumers need. External rule packs and additional public
+   graph models remain later.
 
-1. Build a labeled corpus with at least 25 realistic cases, including at least
-   10 healthy/recovered controls and positive/negative coverage for every rule.
-2. Include active rollouts and rapidly changing Pod/EndpointSlice cases; use
-   them to decide whether dependency-aware revision verification is necessary.
-3. Validate results with 3–5 external operators and turn every wrong or missed
-   diagnosis into a regression case.
-4. Stabilize the JSON/evidence contract only after the corpus exposes which
-   fields integrations actually need; external rule packs remain later.
+## Publication plan
 
-## Gate A — Reliability baseline (in progress)
+### Soft-public preparation — in progress
 
-The current goal is to make the existing Service, Deployment, and Pod slice
-defensible before adding more resource kinds.
+“Soft-public” means the source repository becomes visible and can be shared
+directly with selected Kubernetes operators. It does **not** mean a supported
+release, version tag, Krew submission, compatibility guarantee, or broad launch
+announcement. README must continue to say experimental alpha.
+
+Do not keep the repository private merely to complete every validation goal.
+Open it as soon as these minimum safety and honesty blockers are complete:
+
+- [ ] All current local work is on remote `main`, and build/unit/race plus the
+  full Kubernetes 1.34/1.35/1.36 e2e matrix are green.
+- [ ] `SECURITY.md` exists with private vulnerability-reporting instructions;
+  README remains explicit about experimental status, unsupported versions,
+  runtime data boundaries, and the absence of a release/Krew installation.
+- [ ] Repository history and tracked files have been checked for credentials,
+  cluster identities, private incident data, and other material that must not
+  become public.
+- [ ] GitHub repository description, license display, and default-branch
+  protection are ready for outside readers and contributors.
+
+These are important but do not block source visibility; complete them in
+parallel after soft-public:
+
+- [ ] CI follows the latest patch for each maintained minor and records exact
+  environment evidence.
+- [ ] Snapshot evaluator binaries exist for Linux and macOS on amd64 and arm64,
+  with checksums and an explicit “unreleased/unsupported” label.
+- [ ] `CONTRIBUTING.md`, evaluator instructions, anonymization guidance,
+  structured feedback/incident templates, topics, and issue templates exist.
+- [ ] Deterministic incomplete-RBAC behavior has a real-cluster reproduction;
+  partial evidence must not become false absence.
+- [ ] Operator trials are running and every factual or severe usability failure
+  is becoming a regression case or explicit roadmap decision.
+
+A broad public-alpha announcement still requires Gate B's minimum independent
+evidence. Version tags and Krew remain behind Gates B and C.
+
+## Gate A — Reliability baseline (internal baseline complete)
+
+The Service, Deployment, and Pod implementation has completed its internal
+reliability checklist. This status is provisional rather than irreversible:
+any corpus or field case that exposes a factual rule error or false causal edge
+reopens Gate A immediately.
 
 Completed:
 
@@ -90,7 +159,7 @@ Completed:
   new or old minor is compatible; expose every skip and make missing rule
   coverage health-blocking.
 
-Still required:
+Additional completed reliability work:
 
 - [x] Build a registry-parity rule matrix where every built-in rule has direct
   positive and meaningful negative/boundary tests, and every finding type it
@@ -155,14 +224,17 @@ Still required:
   corpus cases or field reports demonstrate a drift-caused false root. See
   `docs/temporal-integrity.md`.
 
-Gate A passes only when there are no known factually invalid rules, no known
-cross-resource false causal edges, and every missing evidence source is visible
-in both console and JSON output.
+Gate A is internally passed because there are currently no known factually
+invalid rules or cross-resource false causal edges, and missing evidence is
+visible in console and JSON. This is an internal evidence claim, not proof of
+field precision.
 
 ## Gate B — Validation corpus and real-cluster precision
 
 Unit fixtures are necessary but easy to make self-fulfilling. This gate tests
 whether the model survives Kubernetes behavior it was not authored around.
+
+### Gate B1 — Reproducibility and provenance (mostly implemented)
 
 - [x] Make Kind e2e assert the exact root-cause type set, not merely that an
   expected type appears somewhere.
@@ -187,27 +259,45 @@ whether the model survives Kubernetes behavior it was not authored around.
   scenario phase's result JSON as per-minor artifacts; assertion expectations
   remain in the executable e2e contract. Sanitized field cases must carry the
   same provenance when they are added.
+- [ ] Keep the matrix on the latest patch of each maintained minor and define a
+  repeatable review checklist for adding a new minor. Fail-closed compatibility
+  becomes an adoption failure if a solo maintainer cannot advance the window
+  promptly.
+- [ ] Preserve selected compatibility baselines beyond the 30-day CI artifact
+  lifetime. Ephemeral workflow artifacts improve debugging but are not a
+  durable validation corpus.
+
+### Gate B2 — Independent precision and usefulness (not started)
+
+- [ ] Run deterministic live reproductions for incomplete RBAC, stale Events,
+  multi-container Pods, multiple workloads behind one Service, multiple
+  ReplicaSets, and a recovery/rollout boundary. Rapid-change observations may
+  be non-gating; do not encode a controller race as a deterministic test.
+- [ ] Run structured trials with 3–5 external operators. Record installation
+  friction, useful chains, false roots, misses, abstentions, partial evidence,
+  collection time, and whether kdiag shortened diagnosis.
 - [ ] Create a sanitized corpus of real `get/describe/events` snapshots,
   including incomplete RBAC, stale-event, active-rollout, and focus-change
   cases. Start with at least 25 labeled cases and at least 10 healthy/recovered
-  controls.
+  controls, but treat rule/mechanism coverage as more important than hitting an
+  arbitrary count.
 - [ ] Give every registered rule at least one positive and one meaningful
   negative real-cluster/corpus case; fixtures alone do not validate Kubernetes
   behavior outside the author's assumptions.
 - [ ] Maintain a regression case for every reported wrong or missed diagnosis.
-- [ ] Record rule precision by corpus case. Do not market a global accuracy
-  percentage without a representative labeled dataset.
-- [ ] Test clusters with multiple workloads behind one Service, multi-container
-  Pods, multiple ReplicaSets, and mixed-version rollouts.
+- [ ] Record outcomes per rule and confidence bucket: false roots, misses,
+  healthy-control false positives, actionable-chain coverage, and
+  `unknown`/abstention rate. Precision alone rewards a tool that always says
+  `unknown`; report usefulness and coverage beside it.
 - [ ] Add explicit mixed kubelet-version cases; API server version alone cannot
   establish component-level semantics during upgrades.
-- [ ] Run a structured field trial with 3–5 external operators on clusters the
-  author did not construct; record useful chains, false roots, misses, partial
-  evidence, collection duration, and whether kdiag shortened diagnosis time.
 
-Gate B passes when the known corpus has no high-confidence false root cause,
-healthy/recovered cases remain healthy, and at least a small number of external
-operators have validated results on clusters the author did not construct.
+Gate B passes only when the minimum corpus has no high-confidence false root,
+healthy/recovered controls remain healthy, confidence-bucket results and
+abstention are reported with their denominators, and 3–5 external operators
+have evaluated clusters the author did not construct. At least two must be able
+to identify a specific case where the evidence chain shortened diagnosis; a
+perfect false-positive score produced mostly by `unknown` does not pass.
 
 ## Gate C — Stable evidence contract
 
@@ -223,11 +313,9 @@ better integration surface than prematurely building a TUI or AI layer.
   predicates, compatibility/capability requirements) and generate the rule
   reference from code. ID, family, description, owned finding types, and minor
   range are already in the internal registry; the full contract remains open.
-- [ ] Publish a normalized, versioned, data-minimized graph snapshot that rule
-  consumers can use without importing kdiag internals or obtaining a
-  Kubernetes client.
 - [ ] Evaluate a small MCP or stdin/stdout adapter only after the JSON contract
-  is stable; it must expose structured evidence, not free-form guesses.
+  is stable and a real consumer asks for it; it must expose structured
+  evidence, not free-form guesses.
 
 Gate C passes when another program can consume results without importing
 kdiag's Go internals or scraping console text.
@@ -239,6 +327,10 @@ Only after Gates A and C, with Gate B providing the validation loop:
 - [ ] Write an ADR comparing bounded CEL/declarative packs, WASM, and a
   versioned out-of-process protocol. Native Go `plugin` shared objects are not
   a candidate.
+- [ ] Publish a normalized, versioned, data-minimized graph snapshot that rule
+  consumers can evaluate without importing kdiag internals or obtaining a
+  Kubernetes client. This is an extension-system input, not part of the first
+  stable result JSON contract.
 - [ ] Define namespaced external rule IDs, pack/schema compatibility,
   provenance (name/version/checksum), duplicate handling, and strict parsing.
 - [ ] Let the first pilot emit standalone findings only. External rules cannot
@@ -271,18 +363,20 @@ Each slice requires its own API semantics review, permission impact, positive
 and negative fixtures, and real-cluster reproduction. NetworkPolicy, RBAC, and
 Ingress are large enough to require separate design documents.
 
-## Gate F — Public preview and distribution
+## Gate F — Public preview release and distribution
 
-Only after Gates A and B, and the stable core of Gate C:
+Making the source repository soft-public does not pass this gate. A versioned
+preview and broad announcement happen only after Gates A and B, and the stable
+core of Gate C:
 
 - [ ] Choose a plugin name after checking Krew naming and existing plugin
   collisions; `diag` may be too generic.
-- [ ] Add security, support, contributing, compatibility, and RBAC documents.
+- [ ] Finalize support and compatibility policies. Basic security,
+  contributing, evaluator, and RBAC guidance already belong to the soft-public
+  checklist.
 - [ ] Cut the first explicitly pre-1.0 preview tag.
-- [ ] Validate release artifacts on Linux and macOS before publishing them.
-- [ ] Document and CI-test the contributor/source-install Go toolchain policy;
-  binary releases should prevent the current new compiler requirement from
-  becoming unnecessary end-user friction.
+- [ ] Validate signed release artifacts and checksums on Linux and macOS before
+  publishing them. Evaluator snapshots are not release artifacts.
 - [ ] Submit to Krew only after the binary and name are stable enough that
   discovery does not amplify a misleading tool.
 
@@ -329,16 +423,41 @@ These are not current work:
 | Focus stability is not an atomic snapshot claim | Kubernetes does not provide a single transaction across the resource kinds kdiag reads; the related-resource boundary remains explicit and must be challenged by active-rollout corpus cases. |
 | No blanket second collection pass | Partial revalidation creates false assurance; a full pass doubles broad reads and volatile evidence calls. Corpus evidence must justify dependency-aware revalidation first. |
 | Keep one namespace-wide Service LIST for now | Kubernetes has no reliable reverse selector query. A weak local baseline showed linear payload growth but no urgent latency problem, so correctness beats speculative optimization until field evidence says otherwise. |
+| Soft-public source is not a release | Visibility enables evaluator feedback without implying a supported version, compatibility promise, Krew readiness, or broad launch. |
+| External feedback starts before the corpus count is complete | A corpus authored entirely around the implementation can validate its own assumptions. Operators and field incidents must shape the dataset iteratively. |
+
+## Reassessment triggers
+
+After the first 3–5 external operators, pause new rules, adapters, and extension
+work and revisit the product thesis if any of these dominate applicable cases:
+
+- operators do not use kdiag a second time or cannot name a diagnosis it made
+  materially faster;
+- results are mostly `unknown`, partial, or standalone observations rather than
+  useful causal chains;
+- the required RBAC is routinely rejected or unavailable;
+- misses cluster around resource families outside the Service/Deployment/Pod
+  slice, making the current scope too narrow to be useful;
+- high/medium confidence does not correspond to materially better precision.
+
+The correct response to those signals may be a narrower positioning, a change
+to evidence collection, one carefully selected new resource slice, or stopping
+the external-rule plan. More framework is not the default answer.
 
 ## Success signals
 
 In order of importance:
 
-1. Zero known high-confidence false root causes in the regression corpus.
-2. Healthy and recovered cases remain healthy across supported Kubernetes
-   versions.
-3. Partial RBAC produces explicit unknowns instead of false absence findings.
-4. An external operator says the chain shortened time-to-diagnosis and can show
-   which evidence made it useful.
-5. Wrong/missed diagnoses become reproducible regression cases quickly.
-6. Only then: repeat users, external contributions, stars, and distribution.
+1. No high-confidence false root in the representative regression corpus, with
+   the denominator and confidence buckets visible.
+2. A non-trivial share of applicable inspections produce an actionable chain;
+   `unknown`, partial, standalone, and missed outcomes are reported rather than
+   removed from the denominator.
+3. Healthy and recovered controls remain healthy across supported Kubernetes
+   versions, while partial RBAC produces explicit unknowns instead of false
+   absence findings.
+4. At least two external operators can identify a case where the evidence chain
+   shortened diagnosis, and at least one chooses to use kdiag again.
+5. Wrong and missed diagnoses become sanitized regression cases quickly.
+6. Only then: repeat users, external contributions, stars, a versioned preview,
+   and distribution.
