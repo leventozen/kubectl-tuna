@@ -88,14 +88,15 @@ announcement. README must continue to say experimental alpha.
 Do not keep the repository private merely to complete every validation goal.
 Open it as soon as these minimum safety and honesty blockers are complete:
 
-- [ ] All current local work is on remote `main`, and build/unit/race plus the
+- [x] All current local work is on remote `main`, and build/unit/race plus the
   full Kubernetes 1.34/1.35/1.36 e2e matrix are green.
-- [ ] `SECURITY.md` exists with private vulnerability-reporting instructions;
+- [x] `SECURITY.md` exists with private vulnerability-reporting instructions;
   README remains explicit about experimental status, unsupported versions,
   runtime data boundaries, and the absence of a release/Krew installation.
 - [ ] Repository history and tracked files have been checked for credentials,
   cluster identities, private incident data, and other material that must not
-  become public.
+  become public. Credential, kubeconfig, and private-incident scans are clean;
+  commit-author e-mail privacy is the remaining publication decision.
 - [ ] GitHub repository description, license display, and default-branch
   protection are ready for outside readers and contributors.
 

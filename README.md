@@ -483,6 +483,13 @@ pilot constrained external rule authoring, then consider more resource
 families and distribution. Krew submission and a tagged version are
 deliberately gated until the existing diagnoses are trustworthy.
 
+## Security
+
+Do not report suspected vulnerabilities or sensitive cluster evidence in a
+public issue. Use the private reporting instructions in
+[`SECURITY.md`](SECURITY.md). kdiag is experimental, pre-release software and
+has no supported versions yet.
+
 ## License
 
 Apache-2.0
