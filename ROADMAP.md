@@ -44,10 +44,11 @@ product validation:
   contracts.
 - Eight author-constructed fixture snapshots provide nine inspections and one
   healthy control.
-- Six author-constructed Kind scenarios provide seven phases: four distinct
-  live root-cause patterns, one healthy control, one recovery phase, and one
-  incomplete-RBAC abstention. Repeating them across three Kubernetes minors
-  validates compatibility mechanics; it does not create 21 independent cases.
+- Seven author-constructed Kind scenarios provide eight phases: four distinct
+  live root-cause patterns, one healthy control, one recovery phase, one
+  incomplete-RBAC abstention, and one cross-workload isolation boundary.
+  Repeating them across three Kubernetes minors validates compatibility
+  mechanics; it does not create 24 independent cases.
 - There are no sanitized field incidents and no completed external-operator
   trials yet.
 
@@ -62,8 +63,9 @@ operators the author did not construct.
    submission, or broad public-alpha announcement yet.
 2. Run owner-led field tests on clusters and failures not encoded as fixtures.
    Record these as author observations, not independent validation.
-3. Complete deterministic incomplete-RBAC coverage and then work through the
-   remaining non-racy real-cluster boundary cases in Gate B2.
+3. Work through the remaining non-racy real-cluster boundary cases in Gate B2.
+   Incomplete RBAC and shared-Service cross-workload isolation are already
+   covered; stale Events, multi-container Pods, and multiple ReplicaSets remain.
 4. Prepare a friction-light evaluator path without actively recruiting yet:
    unsigned snapshot binaries with checksums, a minimal evaluator guide,
    `CONTRIBUTING.md`, a feedback template, and an explicit Go toolchain policy.
@@ -278,10 +280,14 @@ whether the model survives Kubernetes behavior it was not authored around.
 - [x] Run a deterministic incomplete-RBAC live reproduction using a restricted
   ServiceAccount. Denied EndpointSlice evidence must produce `unknown` health,
   one explicit warning, and no false zero-endpoint finding.
-- [ ] Add deterministic stale-Event, multi-container Pod, multiple-workloads-
-  behind-one-Service, and multiple-ReplicaSet live reproductions. Keep a
-  recovery/rollout boundary non-gating if controller timing cannot be made
-  deterministic; do not encode a race as a passing contract.
+- [x] Add a deterministic multiple-workloads-behind-one-Service reproduction.
+  One ready Pod keeps the Service healthy while two Deployment-unavailable
+  findings coexist; the broken Pod must explain only its exact owner through
+  Deployment→ReplicaSet→Pod, never the other workload selected by the Service.
+- [ ] Add deterministic stale-Event, multi-container Pod, and multiple-
+  ReplicaSet live reproductions. Keep a recovery/rollout boundary non-gating if
+  controller timing cannot be made deterministic; do not encode a race as a
+  passing contract.
 - [ ] Run structured trials with 3–5 external operators. Record installation
   friction, useful chains, false roots, misses, abstentions, partial evidence,
   collection time, and whether Tuna shortened diagnosis.

@@ -91,6 +91,20 @@ raise SystemExit(0 if ok else 1)
 '
 }
 
+service_has_ready_endpoint() {
+	python3 -c '
+import json, sys
+slices = json.load(sys.stdin).get("items", [])
+ready = any(
+    endpoint.get("conditions", {}).get("ready") is not False
+    for endpoint_slice in slices
+    for endpoint in endpoint_slice.get("endpoints", [])
+    if endpoint.get("addresses")
+)
+raise SystemExit(0 if ready else 1)
+'
+}
+
 matches_incomplete_rbac_contract() {
 	python3 -c '
 import json, sys
@@ -116,6 +130,64 @@ ok = (
     and len(endpoint_warnings) == 1
     and not false_absence
 )
+raise SystemExit(0 if ok else 1)
+'
+}
+
+matches_multiple_workloads_contract() {
+	python3 -c '
+import json, sys
+res = json.load(sys.stdin)
+findings = res.get("findings", [])
+
+def findings_of_type(finding_type):
+    return [finding for finding in findings if finding.get("type") == finding_type]
+
+probe_mismatches = findings_of_type("readiness-probe-port-mismatch")
+probe_failures = findings_of_type("readiness-probe-failing")
+not_ready = findings_of_type("pod-not-ready")
+unavailable = {
+    finding.get("resource", {}).get("name"): finding
+    for finding in findings_of_type("deployment-unavailable")
+}
+
+expected_types = sorted([
+    "deployment-unavailable",
+    "deployment-unavailable",
+    "pod-not-ready",
+    "readiness-probe-failing",
+    "readiness-probe-port-mismatch",
+])
+actual_types = sorted(finding.get("type") for finding in findings)
+
+ok = False
+if (
+    len(probe_mismatches) == 1
+    and len(probe_failures) == 1
+    and len(not_ready) == 1
+    and set(unavailable) == {"broken-backend", "serving-backend"}
+):
+    mismatch = probe_mismatches[0]
+    failure = probe_failures[0]
+    pod = not_ready[0]
+    broken = unavailable["broken-backend"]
+    serving = unavailable["serving-backend"]
+    ok = (
+        res.get("health") == "healthy"
+        and res.get("partial") is False
+        and res.get("warnings", []) == []
+        and actual_types == expected_types
+        and res.get("rootCauses") == [mismatch.get("id")]
+        and mismatch.get("resource") == failure.get("resource") == pod.get("resource")
+        and mismatch.get("causes") == [failure.get("id")]
+        and failure.get("causedBy") == [mismatch.get("id")]
+        and failure.get("causes") == [pod.get("id")]
+        and pod.get("causedBy") == [failure.get("id")]
+        and pod.get("causes") == [broken.get("id")]
+        and broken.get("causedBy") == [pod.get("id")]
+        and serving.get("causedBy", []) == []
+        and serving.get("causes", []) == []
+    )
 raise SystemExit(0 if ok else 1)
 '
 }
@@ -275,6 +347,53 @@ check_incomplete_rbac() {
 	fi
 }
 
+check_multiple_workloads() {
+	local scenario="multiple-workloads-one-service" deadline_s=120
+	echo "=== scenario: $scenario (shared Service, isolated workload causality) ==="
+	kubectl apply -f "$DIR/$scenario/manifests.yaml" >/dev/null
+
+	local endpoint_start=$SECONDS ready_endpoint="FAIL"
+	while [ $((SECONDS - endpoint_start)) -lt "$deadline_s" ]; do
+		if kubectl get endpointslices -n tuna-demo \
+			-l kubernetes.io/service-name=shared-api -o json 2>/dev/null | service_has_ready_endpoint; then
+			ready_endpoint="PASS"
+			break
+		fi
+		sleep 2
+	done
+	if [ "$ready_endpoint" != "PASS" ]; then
+		echo "FAIL: serving workload did not produce a ready Service endpoint"
+		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		return
+	fi
+
+	local start=$SECONDS out="" status=1 result="FAIL"
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		set +e
+		out="$("$TUNA_BIN" inspect service shared-api -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 0 ] && echo "$out" | matches_multiple_workloads_contract; then
+			result="PASS"
+			break
+		fi
+	done
+
+	write_case_result "$scenario" "$out"
+	kubectl delete namespace tuna-demo --wait >/dev/null
+
+	if [ "$result" = "PASS" ]; then
+		echo "PASS: shared Service stayed healthy and the broken Pod explained only its owning Deployment"
+	else
+		echo "FAIL: multiple-workload isolation contract was not met (exit: $status)"
+		[ -n "$out" ] && echo "$out"
+		fail=1
+	fi
+}
+
 check_recovery() {
 	local scenario="$1" kind="$2" name="$3" deadline_s="$4" expected_root="$5"
 
@@ -329,6 +448,7 @@ check_recovery() {
 check_recovery broken-readiness-port service payment 120 readiness-probe-port-mismatch
 check_healthy healthy-service service healthy-api 120
 check_incomplete_rbac
+check_multiple_workloads
 check service-selector-mismatch service checkout-api 90 service-selector-no-pods
 check failed-scheduling deployment analytics 90 pod-unschedulable
 check oomkilled deployment billing 240 container-oomkilled
