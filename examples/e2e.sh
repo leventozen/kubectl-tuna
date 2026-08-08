@@ -289,6 +289,92 @@ raise SystemExit(0 if ok else 1)
 '
 }
 
+matches_multiple_replicaset_rollout_contract() {
+	local target_pod="$1" old_pod="$2" target_rs="$3"
+	python3 -c '
+import json, sys
+
+target_pod, old_pod, target_rs = sys.argv[1:4]
+res = json.load(sys.stdin)
+findings = res.get("findings", [])
+
+def by_type_name(finding_type, name):
+    matches = [
+        finding for finding in findings
+        if finding.get("type") == finding_type
+        and finding.get("resource", {}).get("name") == name
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+unavailable = by_type_name("deployment-unavailable", "rollout-boundary")
+rollout = by_type_name("rollout-stuck", "rollout-boundary")
+image_pull = by_type_name("image-pull-failure", target_pod)
+target_not_ready = by_type_name("pod-not-ready", target_pod)
+old_readiness = by_type_name("readiness-probe-failing", old_pod)
+old_not_ready = by_type_name("pod-not-ready", old_pod)
+
+actual_types = sorted(
+    (finding.get("type"), finding.get("resource", {}).get("name"))
+    for finding in findings
+)
+expected_types = sorted([
+    ("deployment-unavailable", "rollout-boundary"),
+    ("rollout-stuck", "rollout-boundary"),
+    ("image-pull-failure", target_pod),
+    ("pod-not-ready", target_pod),
+    ("readiness-probe-failing", old_pod),
+    ("pod-not-ready", old_pod),
+])
+root_ids = sorted(res.get("rootCauses") or [])
+expected_roots = sorted([image_pull.get("id"), old_readiness.get("id")]) if image_pull and old_readiness else []
+target_evidence = any(
+    evidence.get("source") == f"ReplicaSet/{target_rs} (target)"
+    for evidence in (rollout.get("evidence") if rollout else []) or []
+)
+
+ok = all([unavailable, rollout, image_pull, target_not_ready, old_readiness, old_not_ready]) and (
+    res.get("health") == "degraded"
+    and res.get("partial") is False
+    and res.get("warnings", []) == []
+    and len(findings) == 6
+    and actual_types == expected_types
+    and root_ids == expected_roots
+    and image_pull.get("causes") == [target_not_ready.get("id")]
+    and image_pull.get("causedBy", []) == []
+    and old_readiness.get("causes") == [old_not_ready.get("id")]
+    and old_readiness.get("causedBy", []) == []
+    and sorted(target_not_ready.get("causes") or []) == sorted([rollout.get("id"), unavailable.get("id")])
+    and target_not_ready.get("causedBy") == [image_pull.get("id")]
+    and old_not_ready.get("causes") == [unavailable.get("id")]
+    and old_not_ready.get("causedBy") == [old_readiness.get("id")]
+    and rollout.get("causedBy") == [target_not_ready.get("id")]
+    and rollout.get("id") not in (old_not_ready.get("causes") or [])
+    and sorted(unavailable.get("causedBy") or []) == sorted([
+        target_not_ready.get("id"), old_not_ready.get("id"), rollout.get("id"),
+    ])
+    and target_evidence
+)
+raise SystemExit(0 if ok else 1)
+' "$target_pod" "$old_pod" "$target_rs"
+}
+
+pod_has_unhealthy_event_for_named_uid() {
+	local name="$1" uid="$2"
+	python3 -c '
+import json, sys
+name, uid = sys.argv[1:3]
+events = json.load(sys.stdin).get("items", [])
+ok = any(
+    event.get("reason") == "Unhealthy"
+    and event.get("involvedObject", {}).get("uid") == uid
+    and event.get("involvedObject", {}).get("kind") == "Pod"
+    and event.get("involvedObject", {}).get("name") == name
+    for event in events
+)
+raise SystemExit(0 if ok else 1)
+' "$name" "$uid"
+}
+
 pod_has_unhealthy_event_for_uid() {
 	local uid="$1"
 	python3 -c '
@@ -685,12 +771,242 @@ for f in res.get('findings',[]):
 	fi
 }
 
+check_multiple_replicaset_rollout() {
+	local scenario="multiple-replicaset-rollout" deadline_s=240
+	echo "=== scenario: $scenario (current-template RS owns rollout-stuck) ==="
+	kubectl apply -f "$DIR/$scenario/manifests.yaml" >/dev/null
+
+	local start=$SECONDS ready="FAIL"
+	while [ $((SECONDS - start)) -lt 120 ]; do
+		if kubectl rollout status deployment/rollout-boundary -n tuna-demo --timeout=5s >/dev/null 2>&1; then
+			ready="PASS"
+			break
+		fi
+		sleep 2
+	done
+	if [ "$ready" != "PASS" ]; then
+		echo "FAIL: initial rollout-boundary Deployment never became ready"
+		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
+		kubectl get rs -n tuna-demo -o wide 2>/dev/null || true
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		return
+	fi
+
+	local old_pod old_rs old_uid
+	old_pod="$(kubectl get pods -n tuna-demo -l app=rollout-boundary -o jsonpath='{.items[0].metadata.name}')"
+	old_uid="$(kubectl get pod "$old_pod" -n tuna-demo -o jsonpath='{.metadata.uid}')"
+	old_rs="$(python3 -c '
+import json, subprocess, sys
+pod = json.loads(subprocess.run(
+    ["kubectl", "get", "pod", sys.argv[1], "-n", "tuna-demo", "-o", "json"],
+    check=True, capture_output=True, text=True,
+).stdout)
+for owner in pod.get("metadata", {}).get("ownerReferences") or []:
+    if owner.get("kind") == "ReplicaSet" and owner.get("controller") is True:
+        print(owner["name"])
+        raise SystemExit(0)
+raise SystemExit("old Pod has no controller ReplicaSet owner")
+' "$old_pod")"
+
+	kubectl patch deployment rollout-boundary -n tuna-demo --type=json \
+		-p='[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"invalid@@image"}]' >/dev/null
+
+	local target_pod="" target_rs="" target_uid=""
+	start=$SECONDS
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		eval "$(python3 -c '
+import json, subprocess, sys
+
+dep = json.loads(subprocess.run(
+    ["kubectl", "get", "deployment", "rollout-boundary", "-n", "tuna-demo", "-o", "json"],
+    check=True, capture_output=True, text=True,
+).stdout)
+rss = json.loads(subprocess.run(
+    ["kubectl", "get", "rs", "-n", "tuna-demo", "-o", "json"],
+    check=True, capture_output=True, text=True,
+).stdout).get("items", [])
+pods = json.loads(subprocess.run(
+    ["kubectl", "get", "pods", "-n", "tuna-demo", "-o", "json"],
+    check=True, capture_output=True, text=True,
+).stdout).get("items", [])
+
+old_rs = sys.argv[1]
+dep_uid = dep["metadata"]["uid"]
+desired_image = dep["spec"]["template"]["spec"]["containers"][0]["image"]
+
+def owned_by_dep(rs):
+    for owner in rs.get("metadata", {}).get("ownerReferences") or []:
+        if owner.get("kind") == "Deployment" and owner.get("uid") == dep_uid and owner.get("controller") is True:
+            return True
+    return False
+
+def template_image(obj):
+    containers = obj.get("spec", {}).get("template", {}).get("spec", {}).get("containers") or []
+    return containers[0]["image"] if containers else ""
+
+candidates = []
+for rs in rss:
+    if not owned_by_dep(rs):
+        continue
+    if rs["metadata"]["name"] == old_rs:
+        continue
+    if template_image(rs) != desired_image:
+        continue
+    candidates.append(rs)
+
+candidates.sort(key=lambda rs: (
+    rs["metadata"].get("creationTimestamp", ""),
+    rs["metadata"]["name"],
+))
+if not candidates:
+    raise SystemExit(0)
+
+target_rs_obj = candidates[0]
+target_rs_name = target_rs_obj["metadata"]["name"]
+target_rs_uid = target_rs_obj["metadata"]["uid"]
+target_pod_obj = None
+for pod in pods:
+    for owner in pod.get("metadata", {}).get("ownerReferences") or []:
+        if owner.get("kind") == "ReplicaSet" and owner.get("uid") == target_rs_uid and owner.get("controller") is True:
+            target_pod_obj = pod
+            break
+    if target_pod_obj is not None:
+        break
+if target_pod_obj is None:
+    raise SystemExit(0)
+
+waiting = None
+for status in target_pod_obj.get("status", {}).get("containerStatuses") or []:
+    if status.get("name") == "app":
+        waiting = (status.get("state") or {}).get("waiting") or {}
+        break
+if not waiting or waiting.get("reason") != "InvalidImageName":
+    raise SystemExit(0)
+
+print("target_rs=" + target_rs_name)
+print("target_pod=" + target_pod_obj["metadata"]["name"])
+print("target_uid=" + target_pod_obj["metadata"]["uid"])
+' "$old_rs")"
+		if [ -n "${target_pod:-}" ] && [ -n "${target_rs:-}" ]; then
+			break
+		fi
+		sleep 2
+	done
+	if [ -z "${target_pod:-}" ] || [ -z "${target_rs:-}" ] || [ "$target_pod" = "$old_pod" ] || [ "$target_rs" = "$old_rs" ]; then
+		echo "FAIL: target ReplicaSet/Pod with InvalidImageName was not observed"
+		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
+		kubectl get rs -n tuna-demo -o wide 2>/dev/null || true
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		return
+	fi
+
+	kubectl exec -n tuna-demo "$old_pod" -- rm /state/ready >/dev/null
+
+	local old_not_ready="FAIL"
+	start=$SECONDS
+	while [ $((SECONDS - start)) -lt 60 ]; do
+		local ready_status
+		ready_status="$(kubectl get pod "$old_pod" -n tuna-demo -o jsonpath='{range .status.conditions[?(@.type=="Ready")]}{.status}{end}' 2>/dev/null || true)"
+		if [ "$ready_status" = "False" ] && kubectl get events -n tuna-demo -o json \
+			--field-selector "involvedObject.kind=Pod,involvedObject.name=${old_pod},involvedObject.uid=${old_uid}" \
+			2>/dev/null | pod_has_unhealthy_event_for_named_uid "$old_pod" "$old_uid"; then
+			old_not_ready="PASS"
+			break
+		fi
+		sleep 2
+	done
+	if [ "$old_not_ready" != "PASS" ]; then
+		echo "FAIL: old Pod did not become Ready=False with an exact-UID Unhealthy Event"
+		kubectl get pod "$old_pod" -n tuna-demo -o yaml 2>/dev/null || true
+		kubectl get events -n tuna-demo --sort-by=.lastTimestamp 2>/dev/null | tail -30 || true
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		return
+	fi
+
+	local deadline_hit="FAIL"
+	start=$SECONDS
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		if python3 -c '
+import json, subprocess, sys
+dep = json.loads(subprocess.run(
+    ["kubectl", "get", "deployment", "rollout-boundary", "-n", "tuna-demo", "-o", "json"],
+    check=True, capture_output=True, text=True,
+).stdout)
+ok = any(
+    cond.get("type") == "Progressing"
+    and cond.get("status") == "False"
+    and cond.get("reason") == "ProgressDeadlineExceeded"
+    for cond in dep.get("status", {}).get("conditions") or []
+)
+raise SystemExit(0 if ok else 1)
+'; then
+			deadline_hit="PASS"
+			break
+		fi
+		sleep 2
+	done
+	if [ "$deadline_hit" != "PASS" ]; then
+		echo "FAIL: Progressing=False/ProgressDeadlineExceeded was not observed"
+		kubectl get deployment rollout-boundary -n tuna-demo -o yaml 2>/dev/null || true
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		return
+	fi
+
+	local out="" status=1 result="FAIL"
+	start=$SECONDS
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		set +e
+		out="$("$TUNA_BIN" inspect deployment rollout-boundary -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 2 ] && echo "$out" | matches_multiple_replicaset_rollout_contract "$target_pod" "$old_pod" "$target_rs"; then
+			result="PASS"
+			break
+		fi
+	done
+
+	write_case_result "$scenario" "${out:-}"
+	if [ "$result" != "PASS" ]; then
+		echo "FAIL: multiple-ReplicaSet rollout contract was not met (exit: ${status:-?})"
+		if [ -n "${out:-}" ]; then
+			echo "$out" | python3 -c "import json,sys
+res=json.load(sys.stdin)
+print('findings:')
+for f in res.get('findings',[]):
+    flags=[]
+    if f.get('rootCause'): flags.append('root')
+    if f.get('causedBy'): flags.append('symptom')
+    r=f['resource']; ns=r.get('namespace') or ''
+    print('  - %s [%s] %s/%s/%s: %s' % (f['type'], ','.join(flags) or 'standalone', r['kind'], ns, r['name'], f['summary']))
+    print('    causes=%s causedBy=%s' % (f.get('causes'), f.get('causedBy')))
+" 2>/dev/null || echo "$out"
+		fi
+		echo "--- cluster status ---"
+		echo "old_pod=$old_pod old_rs=$old_rs target_pod=$target_pod target_rs=$target_rs"
+		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
+		kubectl get rs -n tuna-demo -o wide 2>/dev/null || true
+		kubectl get deployment rollout-boundary -n tuna-demo -o yaml 2>/dev/null || true
+		kubectl get events -n tuna-demo --sort-by=.lastTimestamp 2>/dev/null | tail -40 || true
+		fail=1
+	fi
+	kubectl delete namespace tuna-demo --wait >/dev/null
+	if [ "$result" = "PASS" ]; then
+		echo "PASS: old Pod explained unavailability only; target Pod explained rollout-stuck ($((SECONDS - start))s)"
+	fi
+}
+
 check_recovery broken-readiness-port service payment 120 readiness-probe-port-mismatch
 check_healthy healthy-service service healthy-api 120
 check_incomplete_rbac
 check_multiple_workloads
 check_multi_container
 check_stale_event_identity
+check_multiple_replicaset_rollout
 check service-selector-mismatch service checkout-api 90 service-selector-no-pods
 check failed-scheduling deployment analytics 90 pod-unschedulable
 check oomkilled deployment billing 240 container-oomkilled

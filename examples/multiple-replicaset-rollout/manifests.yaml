@@ -1,0 +1,62 @@
+# Live boundary: an old ReplicaSet Pod can contribute to Deployment
+# unavailability while only the current-template ReplicaSet Pod may directly
+# explain rollout-stuck.
+#
+# Initial state is healthy (busybox + emptyDir readiness latch). The e2e driver
+# then patches the Deployment image to an invalid local reference, removes the
+# readiness latch from the still-running old Pod, and waits for
+# ProgressDeadlineExceeded before asserting Tuna's causal contract.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tuna-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rollout-boundary
+  namespace: tuna-demo
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 20
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: rollout-boundary
+  template:
+    metadata:
+      labels:
+        app: rollout-boundary
+    spec:
+      terminationGracePeriodSeconds: 1
+      volumes:
+        - name: state
+          emptyDir: {}
+      containers:
+        - name: app
+          image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              touch /state/ready
+              exec sleep 3600
+          volumeMounts:
+            - name: state
+              mountPath: /state
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test -f /state/ready
+            periodSeconds: 1
+            timeoutSeconds: 1
+            failureThreshold: 1
+            successThreshold: 1

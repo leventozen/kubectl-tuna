@@ -3,6 +3,7 @@ package diag
 import (
 	"sort"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/leventozen/kubectl-tuna/internal/graph"
@@ -31,7 +32,7 @@ var causalRules = []causalRule{
 	{PodUnschedulable, PodNotReady, sameResource},
 	{PodNotReady, ServiceNoReadyEndpoints, selectedByService},
 	{PodNotReady, DeploymentUnavailable, ownedByDeployment},
-	{PodNotReady, RolloutStuck, ownedByDeployment},
+	{PodNotReady, RolloutStuck, ownedByDeploymentRolloutTarget},
 	{ServiceSelectorNoPods, ServiceNoReadyEndpoints, sameResource},
 	{NodePressure, PodEvicted, scheduledOnNode},
 	{PodEvicted, PodNotReady, sameResource},
@@ -109,6 +110,31 @@ func selectedByService(cause, effect *Finding, g *graph.Graph) bool {
 
 func ownedByDeployment(cause, effect *Finding, g *graph.Graph) bool {
 	return g.HasTypedPath(effect.Resource, cause.Resource, graph.EdgeOwns, graph.EdgeOwns)
+}
+
+// ownedByDeploymentRolloutTarget links Pod NotReady to rollout-stuck only when
+// the Pod is owned by the Deployment's current-template ReplicaSet. Ownership
+// through any other ReplicaSet can still explain deployment-unavailable via
+// ownedByDeployment, but must not be presented as a direct rollout-blocker.
+func ownedByDeploymentRolloutTarget(cause, effect *Finding, g *graph.Graph) bool {
+	node, ok := g.Node(effect.Resource)
+	if !ok {
+		return false
+	}
+	dep, ok := node.Object.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+	target := currentTemplateReplicaSet(g, effect.Resource, dep)
+	if target == nil {
+		return false
+	}
+	targetRef := graph.ResourceRef{
+		Kind:      "ReplicaSet",
+		Namespace: target.Namespace,
+		Name:      target.Name,
+	}
+	return g.HasEdge(targetRef, cause.Resource, graph.EdgeOwns)
 }
 
 func scheduledOnNode(cause, effect *Finding, g *graph.Graph) bool {

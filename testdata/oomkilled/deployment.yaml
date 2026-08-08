@@ -58,3 +58,6 @@ spec:
       containers:
         - name: app
           image: billing:3.4
+          resources:
+            limits:
+              memory: 512Mi

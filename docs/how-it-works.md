@@ -161,11 +161,21 @@ pod-not-ready
   -- Service selects that Pod --> service-no-ready-endpoints
 
 pod-not-ready
-  -- Deployment owns that Pod through a ReplicaSet --> deployment-unavailable
+  -- Deployment owns that Pod through any owned ReplicaSet --> deployment-unavailable
+
+pod-not-ready
+  -- Deployment owns that Pod through the current-template ReplicaSet --> rollout-stuck
 
 node-pressure
   -- that Pod is scheduled on that Node --> pod-evicted
 ```
+
+`deployment-unavailable` accepts any exact Deployment→ReplicaSet→Pod ownership
+path because an unavailable Pod from an older active ReplicaSet still
+contributes to aggregate Deployment availability. `rollout-stuck` is narrower:
+only a Pod owned by the ReplicaSet whose template matches
+`Deployment.spec.template` (ignoring only `pod-template-hash`) may explain the
+current rollout target. Revision annotations are history, not identity.
 
 There is no generic “these objects are within four graph hops, therefore one
 caused the other” fallback. If the exact predicate cannot be proven, both

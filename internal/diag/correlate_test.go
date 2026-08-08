@@ -2,10 +2,13 @@ package diag
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
@@ -142,4 +145,159 @@ func TestReplicaOwnersRequireExactDeploymentReplicaSetPodPath(t *testing.T) {
 	require.Equal(t, depB, owners["f-2"])
 	require.NotContains(t, owners, "f-3")
 	require.NotContains(t, owners, "f-4")
+}
+
+func TestRolloutStuckRequiresTargetReplicaSetPod(t *testing.T) {
+	g, depRef, targetPod, oldPod := multiReplicaSetRolloutGraph(t)
+
+	targetNotReady := &Finding{Type: PodNotReady, Resource: targetPod}
+	oldNotReady := &Finding{Type: PodNotReady, Resource: oldPod}
+	rollout := &Finding{Type: RolloutStuck, Resource: depRef}
+	unavailable := &Finding{Type: DeploymentUnavailable, Resource: depRef}
+
+	Correlate([]*Finding{targetNotReady, oldNotReady, rollout, unavailable}, g)
+
+	require.ElementsMatch(t, []*Finding{rollout, unavailable}, targetNotReady.Causes)
+	require.Equal(t, []*Finding{unavailable}, oldNotReady.Causes)
+	require.NotContains(t, oldNotReady.Causes, rollout)
+	require.Equal(t, []*Finding{targetNotReady}, rollout.CausedBy)
+	require.ElementsMatch(t, []*Finding{targetNotReady, oldNotReady, rollout}, unavailable.CausedBy)
+}
+
+func TestRolloutStuckFailsClosedWithoutMatchingTargetReplicaSet(t *testing.T) {
+	depRef := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"}
+	rsRef := graph.ResourceRef{Kind: "ReplicaSet", Namespace: "ns", Name: "rs-old"}
+	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "pod-old"}
+	replicas := int32(1)
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns", UID: "dep"},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "api"}},
+				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "app", Image: "busybox:desired"}}},
+			},
+		},
+	}
+	g := graph.New(depRef)
+	g.AddNode(depRef, dep)
+	g.AddNode(rsRef, &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "rs-old", Namespace: "ns", UID: "rs-old"},
+		Spec: appsv1.ReplicaSetSpec{
+			Replicas: &replicas,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "api"}},
+				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "app", Image: "busybox:old"}}},
+			},
+		},
+	})
+	g.AddNode(podRef, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-old", Namespace: "ns"}})
+	g.AddEdge(depRef, rsRef, graph.EdgeOwns)
+	g.AddEdge(rsRef, podRef, graph.EdgeOwns)
+
+	notReady := &Finding{Type: PodNotReady, Resource: podRef}
+	rollout := &Finding{Type: RolloutStuck, Resource: depRef}
+	unavailable := &Finding{Type: DeploymentUnavailable, Resource: depRef}
+	Correlate([]*Finding{notReady, rollout, unavailable}, g)
+
+	require.Equal(t, []*Finding{unavailable}, notReady.Causes)
+	require.Empty(t, rollout.CausedBy)
+}
+
+func TestRolloutStuckRejectsCrossDeploymentOwnership(t *testing.T) {
+	g, depRef, targetPod, _ := multiReplicaSetRolloutGraph(t)
+	otherDep := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "other"}
+	g.AddNode(otherDep, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: "ns"},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "other"}},
+				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "app", Image: "busybox:match"}}},
+			},
+		},
+	})
+
+	notReady := &Finding{Type: PodNotReady, Resource: targetPod}
+	rollout := &Finding{Type: RolloutStuck, Resource: otherDep}
+	Correlate([]*Finding{notReady, rollout}, g)
+
+	require.Empty(t, notReady.Causes)
+	require.Empty(t, rollout.CausedBy)
+	_ = depRef
+}
+
+func TestRolloutStuckRejectsMissingTargetOwnsEdge(t *testing.T) {
+	g, depRef, targetPod, _ := multiReplicaSetRolloutGraph(t)
+	orphan := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "orphan"}
+	g.AddNode(orphan, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "orphan", Namespace: "ns"}})
+
+	notReady := &Finding{Type: PodNotReady, Resource: orphan}
+	rollout := &Finding{Type: RolloutStuck, Resource: depRef}
+	Correlate([]*Finding{notReady, rollout}, g)
+
+	require.Empty(t, notReady.Causes)
+	require.Empty(t, rollout.CausedBy)
+	_ = targetPod
+}
+
+func multiReplicaSetRolloutGraph(t *testing.T) (*graph.Graph, graph.ResourceRef, graph.ResourceRef, graph.ResourceRef) {
+	t.Helper()
+	depRef := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"}
+	targetRS := graph.ResourceRef{Kind: "ReplicaSet", Namespace: "ns", Name: "rs-target"}
+	oldRS := graph.ResourceRef{Kind: "ReplicaSet", Namespace: "ns", Name: "rs-old"}
+	targetPod := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "pod-target"}
+	oldPod := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "pod-old"}
+	replicas := int32(1)
+
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns", UID: "dep"},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "api"}},
+				Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: "app", Image: "busybox:match"}}},
+			},
+		},
+	}
+	g := graph.New(depRef)
+	g.AddNode(depRef, dep)
+	g.AddNode(targetRS, &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "rs-target", Namespace: "ns", UID: types.UID("uid-target"),
+			CreationTimestamp: metav1.NewTime(time.Unix(200, 0)),
+			Annotations:       map[string]string{"deployment.kubernetes.io/revision": "2"},
+		},
+		Spec: appsv1.ReplicaSetSpec{
+			Replicas: &replicas,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+					"app": "api", appsv1.DefaultDeploymentUniqueLabelKey: "target",
+				}},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "app", Image: "busybox:match"}}},
+			},
+		},
+	})
+	g.AddNode(oldRS, &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "rs-old", Namespace: "ns", UID: types.UID("uid-old"),
+			CreationTimestamp: metav1.NewTime(time.Unix(100, 0)),
+			Annotations:       map[string]string{"deployment.kubernetes.io/revision": "1"},
+		},
+		Spec: appsv1.ReplicaSetSpec{
+			Replicas: &replicas,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+					"app": "api", appsv1.DefaultDeploymentUniqueLabelKey: "old",
+				}},
+				Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "app", Image: "busybox:old"}}},
+			},
+		},
+	})
+	g.AddNode(targetPod, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-target", Namespace: "ns"}})
+	g.AddNode(oldPod, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-old", Namespace: "ns"}})
+	g.AddEdge(depRef, targetRS, graph.EdgeOwns)
+	g.AddEdge(depRef, oldRS, graph.EdgeOwns)
+	g.AddEdge(targetRS, targetPod, graph.EdgeOwns)
+	g.AddEdge(oldRS, oldPod, graph.EdgeOwns)
+	return g, depRef, targetPod, oldPod
 }
