@@ -336,7 +336,7 @@ func (oomKilledRule) Evaluate(g *graph.Graph) []*Finding {
 				})
 			}
 
-			if podIsReady(pn.pod) {
+			if !terminationStillDisrupting(cs, findingType) {
 				f.Impact = ImpactHistorical
 			}
 
@@ -362,6 +362,31 @@ func (oomKilledRule) Evaluate(g *graph.Graph) []*Finding {
 		}
 	}
 	return findings
+}
+
+// terminationStillDisrupting requires the same container's current state to
+// prove that the observed termination remains active. Another container making
+// the Pod NotReady does not turn a recovered termination into a current fault.
+func terminationStillDisrupting(cs corev1.ContainerStatus, findingType FindingType) bool {
+	matches := func(term *corev1.ContainerStateTerminated) bool {
+		if term == nil {
+			return false
+		}
+		switch findingType {
+		case ContainerOOMKilled:
+			return term.Reason == "OOMKilled"
+		case ContainerSIGKILL:
+			return term.ExitCode == 137 && term.Reason != "OOMKilled"
+		default:
+			return false
+		}
+	}
+	if matches(cs.State.Terminated) {
+		return true
+	}
+	return cs.State.Waiting != nil &&
+		cs.State.Waiting.Reason == "CrashLoopBackOff" &&
+		matches(cs.LastTerminationState.Terminated)
 }
 
 // deploymentUnavailableRule fires when a Deployment has fewer available

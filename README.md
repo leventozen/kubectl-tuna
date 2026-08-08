@@ -190,11 +190,12 @@ access, and two Deployments deliberately selected by the same Service. The RBAC
 case must return `unknown` with explicit partial evidence and no false
 zero-endpoint finding. The shared-Service case proves that a broken Pod explains
 only its owning Deployment even when another selected workload has its own
-unavailable finding. Additional fixture and adversarial tests cover healthy
-state, missing ConfigMaps, ambiguous SIGKILL signals, eviction, EndpointSlice
-semantics, API failures, cross-container correlation, and deterministic JSON
-output. CI runs the same suite with digest-pinned Kind images for
-Kubernetes 1.34.8, 1.35.5, and 1.36.1. The provisional support gate remains
+unavailable finding. A multi-container case keeps a recovered sidecar OOM
+historical and separate from another container's active CrashLoop. Additional
+fixture and adversarial tests cover healthy state, missing ConfigMaps, ambiguous
+SIGKILL signals, eviction, EndpointSlice semantics, API failures, and
+deterministic JSON output. CI runs the same suite with digest-pinned Kind images
+for Kubernetes 1.34.8, 1.35.5, and 1.36.1. The provisional support gate remains
 open for corpus precision, environment diversity, and external-operator
 validation.
 

@@ -192,6 +192,51 @@ raise SystemExit(0 if ok else 1)
 '
 }
 
+matches_multi_container_contract() {
+	python3 -c '
+import json, sys
+res = json.load(sys.stdin)
+findings = res.get("findings", [])
+
+def one(finding_type):
+    matches = [finding for finding in findings if finding.get("type") == finding_type]
+    return matches[0] if len(matches) == 1 else None
+
+oom = one("container-oomkilled")
+crash = one("crashloop-backoff")
+not_ready = one("pod-not-ready")
+unavailable = one("deployment-unavailable")
+actual_types = sorted(finding.get("type") for finding in findings)
+expected_types = sorted([
+    "container-oomkilled",
+    "crashloop-backoff",
+    "deployment-unavailable",
+    "pod-not-ready",
+])
+
+ok = all([oom, crash, not_ready, unavailable]) and (
+    res.get("health") == "degraded"
+    and res.get("partial") is False
+    and res.get("warnings", []) == []
+    and actual_types == expected_types
+    and res.get("rootCauses") == [crash.get("id")]
+    and oom.get("subject", {}).get("container") == "memory-sidecar"
+    and oom.get("impact") == "historical"
+    and oom.get("rootCause") is False
+    and oom.get("causes", []) == []
+    and oom.get("causedBy", []) == []
+    and crash.get("subject", {}).get("container") == "app"
+    and crash.get("causes") == [not_ready.get("id")]
+    and crash.get("causedBy", []) == []
+    and not_ready.get("causedBy") == [crash.get("id")]
+    and not_ready.get("causes") == [unavailable.get("id")]
+    and unavailable.get("resource", {}).get("name") == "multi-container"
+    and unavailable.get("causedBy") == [not_ready.get("id")]
+)
+raise SystemExit(0 if ok else 1)
+'
+}
+
 matches_broken_contract() {
 	local expected_roots="$1"
 	python3 -c '
@@ -394,6 +439,36 @@ check_multiple_workloads() {
 	fi
 }
 
+check_multi_container() {
+	local scenario="multi-container-isolation" deadline_s=180
+	echo "=== scenario: $scenario (container identity and historical isolation) ==="
+	kubectl apply -f "$DIR/$scenario/manifests.yaml" >/dev/null
+
+	local start=$SECONDS out="" status=1 result="FAIL"
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		set +e
+		out="$("$TUNA_BIN" inspect deployment multi-container -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 2 ] && echo "$out" | matches_multi_container_contract; then
+			result="PASS"
+			break
+		fi
+	done
+
+	write_case_result "$scenario" "$out"
+	kubectl delete namespace tuna-demo --wait >/dev/null
+
+	if [ "$result" = "PASS" ]; then
+		echo "PASS: recovered sidecar OOM stayed historical and did not explain the app CrashLoop"
+	else
+		echo "FAIL: multi-container isolation contract was not met (exit: $status)"
+		[ -n "$out" ] && echo "$out"
+		fail=1
+	fi
+}
+
 check_recovery() {
 	local scenario="$1" kind="$2" name="$3" deadline_s="$4" expected_root="$5"
 
@@ -449,6 +524,7 @@ check_recovery broken-readiness-port service payment 120 readiness-probe-port-mi
 check_healthy healthy-service service healthy-api 120
 check_incomplete_rbac
 check_multiple_workloads
+check_multi_container
 check service-selector-mismatch service checkout-api 90 service-selector-no-pods
 check failed-scheduling deployment analytics 90 pod-unschedulable
 check oomkilled deployment billing 240 container-oomkilled

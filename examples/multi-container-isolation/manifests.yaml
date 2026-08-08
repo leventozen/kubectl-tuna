@@ -1,0 +1,59 @@
+# One container OOMs once and then recovers; another container remains in
+# CrashLoopBackOff. Both states exist in the same Pod, so proximity alone would
+# let the historical sidecar OOM contaminate the active application failure.
+#
+# Expected Tuna contract:
+#   - crashloop-backoff for app is the only root cause
+#   - container-oomkilled for memory-sidecar is historical and standalone
+#   - app's crash explains Pod NotReady and Deployment unavailable
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tuna-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi-container
+  namespace: tuna-demo
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 600
+  selector:
+    matchLabels:
+      app: multi-container
+  template:
+    metadata:
+      labels:
+        app: multi-container
+    spec:
+      terminationGracePeriodSeconds: 1
+      volumes:
+        - name: state
+          emptyDir: {}
+      containers:
+        - name: app
+          image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+          command: ["/bin/sh", "-c", "exit 1"]
+        - name: memory-sidecar
+          image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              if [ -f /state/oom-complete ]; then
+                exec sleep 3600
+              fi
+              touch /state/oom-complete
+              x=x
+              while true; do
+                x=$x$x$x$x
+              done
+          volumeMounts:
+            - name: state
+              mountPath: /state
+          resources:
+            requests:
+              memory: 8Mi
+            limits:
+              memory: 16Mi
