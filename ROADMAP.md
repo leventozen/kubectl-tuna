@@ -285,9 +285,11 @@ whether the model survives Kubernetes behavior it was not authored around.
   One ready Pod keeps the Service healthy while two Deployment-unavailable
   findings coexist; the broken Pod must explain only its exact owner through
   Deployment→ReplicaSet→Pod, never the other workload selected by the Service.
-- [x] Add a deterministic multi-container Pod reproduction. A recovered
-  sidecar OOM must remain historical and standalone while another container's
-  active CrashLoop alone explains Pod NotReady and Deployment unavailable.
+- [x] Add a deterministic multi-container Pod reproduction. A recovered,
+  memory-limited sidecar termination must remain historical and standalone
+  while another container's invalid image alone explains Pod NotReady and
+  Deployment unavailable. Accept the runtime's `OOMKilled` or ambiguous
+  `Error/137` classification without upgrading the latter into an OOM claim.
 - [ ] Add deterministic stale-Event and multiple-ReplicaSet live reproductions.
   Keep a recovery/rollout boundary non-gating if controller timing cannot be
   made deterministic; do not encode a race as a passing contract.

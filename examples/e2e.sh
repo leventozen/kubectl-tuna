@@ -202,33 +202,37 @@ def one(finding_type):
     matches = [finding for finding in findings if finding.get("type") == finding_type]
     return matches[0] if len(matches) == 1 else None
 
-oom = one("container-oomkilled")
-crash = one("crashloop-backoff")
+terminations = [
+    finding for finding in findings
+    if finding.get("type") in {"container-oomkilled", "container-sigkill"}
+]
+termination = terminations[0] if len(terminations) == 1 else None
+image_pull = one("image-pull-failure")
 not_ready = one("pod-not-ready")
 unavailable = one("deployment-unavailable")
 actual_types = sorted(finding.get("type") for finding in findings)
 expected_types = sorted([
-    "container-oomkilled",
-    "crashloop-backoff",
+    termination.get("type") if termination else "missing-termination",
     "deployment-unavailable",
+    "image-pull-failure",
     "pod-not-ready",
 ])
 
-ok = all([oom, crash, not_ready, unavailable]) and (
+ok = all([termination, image_pull, not_ready, unavailable]) and (
     res.get("health") == "degraded"
     and res.get("partial") is False
     and res.get("warnings", []) == []
     and actual_types == expected_types
-    and res.get("rootCauses") == [crash.get("id")]
-    and oom.get("subject", {}).get("container") == "memory-sidecar"
-    and oom.get("impact") == "historical"
-    and oom.get("rootCause") is False
-    and oom.get("causes", []) == []
-    and oom.get("causedBy", []) == []
-    and crash.get("subject", {}).get("container") == "app"
-    and crash.get("causes") == [not_ready.get("id")]
-    and crash.get("causedBy", []) == []
-    and not_ready.get("causedBy") == [crash.get("id")]
+    and res.get("rootCauses") == [image_pull.get("id")]
+    and termination.get("subject", {}).get("container") == "memory-sidecar"
+    and termination.get("impact") == "historical"
+    and termination.get("rootCause") is False
+    and termination.get("causes", []) == []
+    and termination.get("causedBy", []) == []
+    and image_pull.get("subject", {}).get("container") == "app"
+    and image_pull.get("causes") == [not_ready.get("id")]
+    and image_pull.get("causedBy", []) == []
+    and not_ready.get("causedBy") == [image_pull.get("id")]
     and not_ready.get("causes") == [unavailable.get("id")]
     and unavailable.get("resource", {}).get("name") == "multi-container"
     and unavailable.get("causedBy") == [not_ready.get("id")]
@@ -461,7 +465,7 @@ check_multi_container() {
 	kubectl delete namespace tuna-demo --wait >/dev/null
 
 	if [ "$result" = "PASS" ]; then
-		echo "PASS: recovered sidecar OOM stayed historical and did not explain the app CrashLoop"
+		echo "PASS: recovered sidecar termination stayed historical and did not explain the app image failure"
 	else
 		echo "FAIL: multi-container isolation contract was not met (exit: $status)"
 		[ -n "$out" ] && echo "$out"
