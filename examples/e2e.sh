@@ -253,6 +253,59 @@ raise SystemExit(0 if ok else 1)
 ' "$expected_roots"
 }
 
+matches_stale_event_identity_contract() {
+	python3 -c '
+import json, sys
+res = json.load(sys.stdin)
+findings = res.get("findings", [])
+
+def one(finding_type):
+    matches = [finding for finding in findings if finding.get("type") == finding_type]
+    return matches[0] if len(matches) == 1 else None
+
+image_pull = one("image-pull-failure")
+not_ready = one("pod-not-ready")
+actual_types = sorted(finding.get("type") for finding in findings)
+expected_types = ["image-pull-failure", "pod-not-ready"]
+false_readiness = any(
+    finding.get("type") == "readiness-probe-failing"
+    for finding in findings
+)
+
+ok = all([image_pull, not_ready]) and (
+    res.get("health") == "degraded"
+    and res.get("partial") is False
+    and res.get("warnings", []) == []
+    and actual_types == expected_types
+    and res.get("rootCauses") == [image_pull.get("id")]
+    and image_pull.get("subject", {}).get("container") == "app"
+    and image_pull.get("causes") == [not_ready.get("id")]
+    and image_pull.get("causedBy", []) == []
+    and not_ready.get("causedBy") == [image_pull.get("id")]
+    and not_ready.get("causes", []) == []
+    and not false_readiness
+)
+raise SystemExit(0 if ok else 1)
+'
+}
+
+pod_has_unhealthy_event_for_uid() {
+	local uid="$1"
+	python3 -c '
+import json, sys
+uid = sys.argv[1]
+events = json.load(sys.stdin).get("items", [])
+ok = any(
+    event.get("reason") == "Unhealthy"
+    and event.get("involvedObject", {}).get("uid") == uid
+    and event.get("involvedObject", {}).get("kind") == "Pod"
+    and event.get("involvedObject", {}).get("name") == "stale-event"
+    for event in events
+)
+raise SystemExit(0 if ok else 1)
+' "$uid"
+}
+
 check() {
 	local scenario="$1" kind="$2" name="$3" deadline_s="$4" expected_root="$5"
 
@@ -524,11 +577,120 @@ check_recovery() {
 	fi
 }
 
+check_stale_event_identity() {
+	local scenario="stale-event-identity" deadline_s=180
+	echo "=== scenario: $scenario (same-name Pod must not inherit stale Events) ==="
+	kubectl apply -f "$DIR/$scenario/old-pod.yaml" >/dev/null
+
+	local old_uid=""
+	local start=$SECONDS
+	while [ $((SECONDS - start)) -lt 60 ]; do
+		old_uid="$(kubectl get pod stale-event -n tuna-demo -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
+		[ -n "$old_uid" ] && break
+		sleep 1
+	done
+	if [ -z "$old_uid" ]; then
+		echo "FAIL: old Pod UID was never observed"
+		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		return
+	fi
+
+	local unhealthy="FAIL"
+	start=$SECONDS
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		if kubectl get events -n tuna-demo -o json \
+			--field-selector "involvedObject.kind=Pod,involvedObject.name=stale-event,involvedObject.uid=${old_uid}" \
+			2>/dev/null | pod_has_unhealthy_event_for_uid "$old_uid"; then
+			unhealthy="PASS"
+			break
+		fi
+		sleep 2
+	done
+	if [ "$unhealthy" != "PASS" ]; then
+		echo "FAIL: Unhealthy Event for the old Pod UID was not observed within ${deadline_s}s"
+		kubectl get pod stale-event -n tuna-demo -o yaml 2>/dev/null || true
+		kubectl get events -n tuna-demo --sort-by=.lastTimestamp 2>/dev/null | tail -30 || true
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		return
+	fi
+
+	kubectl delete pod stale-event -n tuna-demo --wait --timeout=60s >/dev/null
+	kubectl apply -f "$DIR/$scenario/current-pod.yaml" >/dev/null
+
+	local new_uid=""
+	start=$SECONDS
+	while [ $((SECONDS - start)) -lt 60 ]; do
+		new_uid="$(kubectl get pod stale-event -n tuna-demo -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
+		[ -n "$new_uid" ] && break
+		sleep 1
+	done
+	if [ -z "$new_uid" ] || [ "$new_uid" = "$old_uid" ]; then
+		echo "FAIL: new Pod UID must be non-empty and different from the old Pod UID"
+		kubectl get pod stale-event -n tuna-demo -o yaml 2>/dev/null || true
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		return
+	fi
+
+	if ! kubectl get events -n tuna-demo -o json \
+		--field-selector "involvedObject.kind=Pod,involvedObject.name=stale-event,involvedObject.uid=${old_uid}" \
+		2>/dev/null | pod_has_unhealthy_event_for_uid "$old_uid"; then
+		echo "FAIL: old-UID Unhealthy Event did not persist after same-name recreation; stale evidence was not reproduced"
+		kubectl get events -n tuna-demo --sort-by=.lastTimestamp 2>/dev/null | tail -30 || true
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		return
+	fi
+
+	local out="" status=1 result="FAIL"
+	start=$SECONDS
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		set +e
+		out="$("$TUNA_BIN" inspect pod stale-event -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 2 ] && echo "$out" | matches_stale_event_identity_contract; then
+			result="PASS"
+			break
+		fi
+	done
+
+	write_case_result "$scenario" "${out:-}"
+	if [ "$result" != "PASS" ]; then
+		echo "FAIL: stale-event identity contract was not met (exit: ${status:-?})"
+		if [ -n "${out:-}" ]; then
+			echo "$out" | python3 -c "import json,sys
+res=json.load(sys.stdin)
+print('findings:')
+for f in res.get('findings',[]):
+    flags=[]
+    if f.get('rootCause'): flags.append('root')
+    if f.get('causedBy'): flags.append('symptom')
+    r=f['resource']; ns=r.get('namespace') or ''
+    print('  - %s [%s] %s/%s/%s: %s' % (f['type'], ','.join(flags) or 'standalone', r['kind'], ns, r['name'], f['summary']))
+" 2>/dev/null || echo "$out"
+		fi
+		echo "--- cluster status ---"
+		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
+		kubectl get events -n tuna-demo --sort-by=.lastTimestamp 2>/dev/null | tail -30 || true
+		fail=1
+	fi
+	kubectl delete namespace tuna-demo --wait >/dev/null
+	if [ "$result" = "PASS" ]; then
+		echo "PASS: stale Unhealthy Event was excluded; only image-pull explained Pod NotReady"
+	fi
+}
+
 check_recovery broken-readiness-port service payment 120 readiness-probe-port-mismatch
 check_healthy healthy-service service healthy-api 120
 check_incomplete_rbac
 check_multiple_workloads
 check_multi_container
+check_stale_event_identity
 check service-selector-mismatch service checkout-api 90 service-selector-no-pods
 check failed-scheduling deployment analytics 90 pod-unschedulable
 check oomkilled deployment billing 240 container-oomkilled

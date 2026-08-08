@@ -1,0 +1,13 @@
+# Scenario phase 2: recreate the same Pod name with an invalid image and no
+# readiness probe. The old Unhealthy Event must not become a false root cause.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: stale-event
+  namespace: tuna-demo
+spec:
+  containers:
+    - name: app
+      # Malformed reference produces InvalidImageName locally without registry
+      # or network dependence.
+      image: "invalid@@image"

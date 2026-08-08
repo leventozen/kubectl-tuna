@@ -560,17 +560,23 @@ func (c *Collector) addConfigRefs(ctx context.Context, g *graph.Graph, pod *core
 // collectEvents fetches Events only for related Pods whose current structured
 // state is not Ready. Current rules use Pod Events as bounded supporting
 // evidence; listing every Event in the namespace would expose unrelated
-// workload data and create unnecessary volume.
+// workload data and create unnecessary volume. When the Pod has a UID, the
+// field selector and client-side filter require the same involved-object UID
+// so a stale Event from a deleted same-name Pod cannot become evidence.
 func (c *Collector) collectEvents(ctx context.Context, g *graph.Graph, namespace string) {
 	for _, node := range g.NodesOfKind("Pod") {
 		pod, ok := node.Object.(*corev1.Pod)
 		if !ok || !podNeedsEvents(pod) {
 			continue
 		}
-		selector := fields.Set{
+		selectorFields := fields.Set{
 			"involvedObject.kind": "Pod",
 			"involvedObject.name": pod.Name,
-		}.AsSelector().String()
+		}
+		if pod.UID != "" {
+			selectorFields["involvedObject.uid"] = string(pod.UID)
+		}
+		selector := selectorFields.AsSelector().String()
 		evList, err := c.client.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{FieldSelector: selector})
 		if err != nil {
 			g.AddCollectionIssue(graph.CollectionIssue{
@@ -580,12 +586,25 @@ func (c *Collector) collectEvents(ctx context.Context, g *graph.Graph, namespace
 			continue
 		}
 		for _, ev := range evList.Items {
-			if ev.InvolvedObject.Kind == "Pod" && ev.InvolvedObject.Name == pod.Name &&
-				(ev.InvolvedObject.Namespace == namespace || ev.InvolvedObject.Namespace == "") {
-				g.AddEvents(ev)
+			if !eventMatchesPod(ev, pod, namespace) {
+				continue
 			}
+			g.AddEvents(ev)
 		}
 	}
+}
+
+func eventMatchesPod(ev corev1.Event, pod *corev1.Pod, namespace string) bool {
+	if ev.InvolvedObject.Kind != "Pod" || ev.InvolvedObject.Name != pod.Name {
+		return false
+	}
+	if ev.InvolvedObject.Namespace != namespace && ev.InvolvedObject.Namespace != "" {
+		return false
+	}
+	if pod.UID == "" {
+		return true
+	}
+	return ev.InvolvedObject.UID != "" && ev.InvolvedObject.UID == pod.UID
 }
 
 func podNeedsEvents(pod *corev1.Pod) bool {

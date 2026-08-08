@@ -186,13 +186,16 @@ make demo SCENARIO=failed-scheduling
 The four broken scenarios run against Kind in `examples/e2e.sh`, together with
 a strict healthy control, a broken-to-recovered readiness flow, a healthy
 Service inspected through an identity that is deliberately denied EndpointSlice
-access, and two Deployments deliberately selected by the same Service. The RBAC
-case must return `unknown` with explicit partial evidence and no false
+access, two Deployments deliberately selected by the same Service, and a
+same-name Pod recreation that must not inherit a previous incarnation's Events.
+The RBAC case must return `unknown` with explicit partial evidence and no false
 zero-endpoint finding. The shared-Service case proves that a broken Pod explains
 only its owning Deployment even when another selected workload has its own
 unavailable finding. A multi-container case keeps a recovered sidecar
 OOM/SIGKILL historical and separate from another container's active image
-failure, without upgrading ambiguous runtime evidence into an OOM claim.
+failure, without upgrading ambiguous runtime evidence into an OOM claim. The
+stale-Event case proves that an old Pod's `Unhealthy` Event cannot become a
+false readiness root for a recreated Pod that only has an image-pull failure.
 Additional fixture and adversarial tests cover healthy state, missing ConfigMaps,
 ambiguous SIGKILL signals, eviction, EndpointSlice semantics, API failures, and
 deterministic JSON output. CI runs the same suite with digest-pinned Kind images
@@ -225,6 +228,10 @@ field-validation cases.
   RBAC contract.
 - Events are transient and message formats vary. Missing events reduce
   evidence; they must not be read as proof that something never happened.
+  Live Pod Event collection matches `involvedObject.uid` to the current Pod
+  UID when that UID is known, so a deleted same-name Pod's Events are not
+  treated as evidence for the current object. Event availability, message
+  text, and timing remain best-effort supplemental data.
 - Focus-resource revision checks detect a proven transition during collection,
   but they do not make the related multi-resource graph an atomic snapshot.
   Related-resource temporal validation remains open.

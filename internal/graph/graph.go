@@ -353,15 +353,25 @@ func (g *Graph) AddEvents(events ...corev1.Event) {
 	g.events = append(g.events, events...)
 }
 
-// EventsFor returns events whose involved object matches ref.
+// EventsFor returns events whose involved object matches ref. When the graph
+// node for ref is a metav1.Object with a non-empty UID, only Events whose
+// involvedObject.uid matches that UID exactly are returned. Empty or wrong
+// involved-object UIDs are rejected so stale Events from a deleted same-name
+// object cannot become rule evidence. Synthetic nodes without a UID keep the
+// existing kind/name/namespace match for fixture graphs.
 func (g *Graph) EventsFor(ref ResourceRef) []corev1.Event {
+	requiredUID := objectUID(g, ref)
 	var out []corev1.Event
 	for _, ev := range g.events {
-		if ev.InvolvedObject.Kind == ref.Kind &&
-			ev.InvolvedObject.Name == ref.Name &&
-			(ev.InvolvedObject.Namespace == ref.Namespace || ev.InvolvedObject.Namespace == "") {
-			out = append(out, ev)
+		if ev.InvolvedObject.Kind != ref.Kind ||
+			ev.InvolvedObject.Name != ref.Name ||
+			(ev.InvolvedObject.Namespace != ref.Namespace && ev.InvolvedObject.Namespace != "") {
+			continue
 		}
+		if requiredUID != "" && (ev.InvolvedObject.UID == "" || ev.InvolvedObject.UID != requiredUID) {
+			continue
+		}
+		out = append(out, ev)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		ti, tj := eventTime(out[i]), eventTime(out[j])
@@ -373,6 +383,18 @@ func (g *Graph) EventsFor(ref ResourceRef) []corev1.Event {
 		return ki < kj
 	})
 	return out
+}
+
+func objectUID(g *Graph, ref ResourceRef) types.UID {
+	node, ok := g.Node(ref)
+	if !ok || node.Object == nil {
+		return ""
+	}
+	obj, ok := node.Object.(metav1.Object)
+	if !ok {
+		return ""
+	}
+	return obj.GetUID()
 }
 
 // AddCollectionIssue records an unavailable evidence source. Duplicate issues

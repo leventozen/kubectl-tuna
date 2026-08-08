@@ -20,6 +20,14 @@ These checks reject a transition that is proven from available structured
 state. They do not prove that every related Pod, Service, EndpointSlice, Event,
 Node, and ConfigMap existed in one atomic cluster snapshot.
 
+Separately, live Pod Events are identity-filtered: when the collected Pod has a
+non-empty UID, Event LIST field selection and `Graph.EventsFor` both require
+`involvedObject.uid` to match that UID exactly. Empty or wrong involved-object
+UIDs are rejected. This prevents a deleted same-name Pod's retained Events from
+becoming evidence for the current object. It does not make Events part of an
+atomic multi-resource snapshot, and it does not define a wall-clock freshness
+window for Events that share the current Pod UID.
+
 ## Options considered
 
 ### Repeat the full collection

@@ -44,12 +44,13 @@ product validation:
   contracts.
 - Eight author-constructed fixture snapshots provide nine inspections and one
   healthy control.
-- Eight author-constructed Kind scenarios provide nine phases: five distinct
-  live root-cause patterns (one also exercises cross-container isolation), one
-  healthy control, one recovery phase, one incomplete-RBAC abstention, and one
-  cross-workload isolation boundary.
+- Nine author-constructed Kind scenarios provide ten phases: five distinct
+  live root-cause patterns (one also exercises cross-container isolation; one
+  also exercises same-name Pod Event identity), one healthy control, one
+  recovery phase, one incomplete-RBAC abstention, and one cross-workload
+  isolation boundary.
   Repeating them across three Kubernetes minors validates compatibility
-  mechanics; it does not create 27 independent cases.
+  mechanics; it does not create 30 independent cases.
 - There are no sanitized field incidents and no completed external-operator
   trials yet.
 
@@ -65,8 +66,10 @@ operators the author did not construct.
 2. Run owner-led field tests on clusters and failures not encoded as fixtures.
    Record these as author observations, not independent validation.
 3. Work through the remaining non-racy real-cluster boundary cases in Gate B2.
-   Incomplete RBAC, shared-Service cross-workload isolation, and multi-container
-   identity are already covered; stale Events and multiple ReplicaSets remain.
+   Incomplete RBAC, shared-Service cross-workload isolation, multi-container
+   identity, and same-name Pod stale-Event identity are already covered;
+   multiple ReplicaSets remain. Universal same-Pod Event age/recency is not
+   claimed solved by UID matching.
 4. Prepare a friction-light evaluator path without actively recruiting yet:
    unsigned snapshot binaries with checksums, a minimal evaluator guide,
    `CONTRIBUTING.md`, a feedback template, and an explicit Go toolchain policy.
@@ -290,7 +293,13 @@ whether the model survives Kubernetes behavior it was not authored around.
   while another container's invalid image alone explains Pod NotReady and
   Deployment unavailable. Accept the runtime's `OOMKilled` or ambiguous
   `Error/137` classification without upgrading the latter into an OOM claim.
-- [ ] Add deterministic stale-Event and multiple-ReplicaSet live reproductions.
+- [x] Add a deterministic same-name Pod stale-Event live reproduction. An old
+  Pod's `Unhealthy` Event must still exist after recreation, and Tuna must
+  diagnose only `image-pull-failure` → `pod-not-ready` with no false
+  readiness finding. Exact UID field selection and graph filtering cover this
+  object-identity boundary; they do not claim a universal Event freshness
+  window.
+- [ ] Add a deterministic multiple-ReplicaSet live reproduction.
   Keep a recovery/rollout boundary non-gating if controller timing cannot be
   made deterministic; do not encode a race as a passing contract.
 - [ ] Run structured trials with 3–5 external operators. Record installation

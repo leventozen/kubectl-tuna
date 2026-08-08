@@ -90,6 +90,56 @@ func TestEventsForUsesSeriesLastObservedTime(t *testing.T) {
 	require.Equal(t, []string{"single", "series-latest"}, []string{events[0].Name, events[1].Name})
 }
 
+func TestEventsForRequiresExactInvolvedObjectUIDWhenKnown(t *testing.T) {
+	ref := ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
+	g := New(ref)
+	g.AddNode(ref, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns", UID: "current-uid"}})
+	g.AddEvents(
+		corev1.Event{
+			ObjectMeta:     metav1.ObjectMeta{Name: "current", Namespace: "ns"},
+			InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "ns", Name: "api", UID: "current-uid"},
+			Reason:         "Failed",
+		},
+		corev1.Event{
+			ObjectMeta:     metav1.ObjectMeta{Name: "stale", Namespace: "ns"},
+			InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "ns", Name: "api", UID: "earlier-uid"},
+			Reason:         "Unhealthy",
+		},
+		corev1.Event{
+			ObjectMeta:     metav1.ObjectMeta{Name: "anonymous", Namespace: "ns"},
+			InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "ns", Name: "api"},
+			Reason:         "Unhealthy",
+		},
+	)
+
+	events := g.EventsFor(ref)
+	require.Len(t, events, 1)
+	require.Equal(t, "current", events[0].Name)
+	require.Equal(t, "current-uid", string(events[0].InvolvedObject.UID))
+}
+
+func TestEventsForKeepsNameMatchWhenObjectHasNoUID(t *testing.T) {
+	ref := ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
+	g := New(ref)
+	g.AddNode(ref, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns"}})
+	g.AddEvents(
+		corev1.Event{
+			ObjectMeta:     metav1.ObjectMeta{Name: "named", Namespace: "ns"},
+			InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "ns", Name: "api"},
+			Reason:         "Failed",
+		},
+		corev1.Event{
+			ObjectMeta:     metav1.ObjectMeta{Name: "other", Namespace: "ns"},
+			InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "ns", Name: "other"},
+			Reason:         "Failed",
+		},
+	)
+
+	events := g.EventsFor(ref)
+	require.Len(t, events, 1)
+	require.Equal(t, "named", events[0].Name)
+}
+
 func TestUnknownNodeIsNotMissing(t *testing.T) {
 	ref := ResourceRef{Kind: "Secret", Namespace: "ns", Name: "credentials"}
 	g := New(ref)

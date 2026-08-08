@@ -268,7 +268,9 @@ func TestEventsAreListedOnlyForRelatedNonReadyPodsWithFieldSelector(t *testing.T
 		},
 	}
 	ready := readyPod("api-ready")
+	ready.UID = "ready-uid"
 	notReady := readyPod("api-not-ready")
+	notReady.UID = "not-ready-uid"
 	notReady.Status.Conditions[0].Status = corev1.ConditionFalse
 	client := fakeClient(svc, ready, notReady)
 
@@ -285,7 +287,52 @@ func TestEventsAreListedOnlyForRelatedNonReadyPodsWithFieldSelector(t *testing.T
 	fieldSelector := eventLists[0].GetListRestrictions().Fields.String()
 	require.Contains(t, fieldSelector, "involvedObject.kind=Pod")
 	require.Contains(t, fieldSelector, "involvedObject.name=api-not-ready")
+	require.Contains(t, fieldSelector, "involvedObject.uid=not-ready-uid")
 	require.NotContains(t, fieldSelector, "api-ready")
+}
+
+func TestCollectorRejectsWrongUIDEventsDespiteFieldSelector(t *testing.T) {
+	pod := readyPod("stale-event")
+	pod.UID = "current-uid"
+	pod.Status.Conditions[0].Status = corev1.ConditionFalse
+	client := fakeClient(pod)
+	client.PrependReactor("list", "events", func(action clienttesting.Action) (bool, runtime.Object, error) {
+		listAction := action.(clienttesting.ListAction)
+		fieldSelector := listAction.GetListRestrictions().Fields.String()
+		require.Contains(t, fieldSelector, "involvedObject.kind=Pod")
+		require.Contains(t, fieldSelector, "involvedObject.name=stale-event")
+		require.Contains(t, fieldSelector, "involvedObject.uid=current-uid")
+		return true, &corev1.EventList{Items: []corev1.Event{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "current", Namespace: "ns"},
+				InvolvedObject: corev1.ObjectReference{
+					Kind: "Pod", Namespace: "ns", Name: "stale-event", UID: "current-uid",
+				},
+				Reason: "Failed", Message: "InvalidImageName",
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "stale", Namespace: "ns"},
+				InvolvedObject: corev1.ObjectReference{
+					Kind: "Pod", Namespace: "ns", Name: "stale-event", UID: "old-uid",
+				},
+				Reason: "Unhealthy", Message: "Readiness probe failed",
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "anonymous", Namespace: "ns"},
+				InvolvedObject: corev1.ObjectReference{
+					Kind: "Pod", Namespace: "ns", Name: "stale-event",
+				},
+				Reason: "Unhealthy", Message: "Readiness probe failed",
+			},
+		}}, nil
+	})
+
+	g, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", "stale-event")
+	require.NoError(t, err)
+	events := g.EventsFor(graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "stale-event"})
+	require.Len(t, events, 1)
+	require.Equal(t, "current", events[0].Name)
+	require.Equal(t, "current-uid", string(events[0].InvolvedObject.UID))
 }
 
 func TestServerVersionFailureSkipsVersionScopedRules(t *testing.T) {
