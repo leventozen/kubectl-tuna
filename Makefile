@@ -1,10 +1,17 @@
-.PHONY: build test vet benchmark corpus e2e demo install-plugin demo-output demo-gif
+.PHONY: build test vet benchmark corpus e2e demo install-plugin demo-output demo-gif evaluator-snapshot
 
 PREFIX ?= $(HOME)/.local
 BIN_DIR ?= $(PREFIX)/bin
+SNAPSHOT_ID ?= unreleased
 
 build:
 	go build -o bin/kubectl-tuna ./cmd/kubectl-tuna
+
+# Local unreleased/unsupported evaluator binaries under dist/ (not a release).
+# Override identity with: make evaluator-snapshot SNAPSHOT_ID=safe-id
+# Refuses an existing final output path; see scripts/build-evaluator-snapshot.sh.
+evaluator-snapshot:
+	bash ./scripts/build-evaluator-snapshot.sh "$(SNAPSHOT_ID)"
 
 test:
 	go test ./...

@@ -83,7 +83,7 @@ This is deliberately a runtime claim, not a promise that every surrounding
 workflow is offline. The Kubernetes API must still be reachable and the
 credentials must be valid. Cloud or SSO credential plugins may contact their
 own provider endpoints to obtain or refresh a token. Building Tuna from source
-may also need network access to download Go modules until reproducible prebuilt
+may also need network access to download Go modules until supported prebuilt
 release artifacts exist.
 
 ## Usage
@@ -280,10 +280,12 @@ deliberately gated until the existing diagnoses are trustworthy.
 
 ## Contributing and evaluation
 
-Selected evaluation is from source only while Tuna remains unreleased. See
-[`docs/evaluator-guide.md`](docs/evaluator-guide.md) for a minimal read-only
-inspection path, outcome categories, and anonymization guidance. Local gates
-and the in-tree rule contribution bar are in
+Selected evaluation is source-first while Tuna remains unreleased. A maintainer
+may optionally provide an unsigned, unsupported snapshot for evaluation; it is
+not a release or installation channel. See
+[`docs/evaluator-guide.md`](docs/evaluator-guide.md) for the read-only inspection
+path, checksum guidance, outcome categories, and anonymization rules. Local
+gates and the in-tree rule contribution bar are in
 [`CONTRIBUTING.md`](CONTRIBUTING.md). This is not a call for broad outreach.
 
 ## Security

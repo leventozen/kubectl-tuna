@@ -73,8 +73,9 @@ operators the author did not construct.
    age/recency is not claimed solved by UID matching.
 4. Prepare a friction-light evaluator path without actively recruiting yet:
    the minimal evaluator guide, `CONTRIBUTING.md`, structured diagnostic
-   feedback form, and explicit Go toolchain policy are in place; unsigned
-   snapshot binaries with checksums remain open.
+   feedback form, and explicit Go toolchain policy are in place; local build
+   machinery and a manually dispatched artifact workflow exist, but a real
+   checksum-verified and smoke-tested artifact handoff remains open.
 5. Start external operator trials after the owner-led pass and evaluator path
    are usable. This is a sequencing delay, not a replacement for independent
    validation. Treat
@@ -117,7 +118,10 @@ parallel after soft-public:
 - [ ] CI follows the latest patch for each maintained minor and records exact
   environment evidence.
 - [ ] Snapshot evaluator binaries exist for Linux and macOS on amd64 and arm64,
-  with checksums and an explicit “unreleased/unsupported” label.
+  with checksums and an explicit “unreleased/unsupported” label. Local
+  build path (`make evaluator-snapshot`) and a manual artifact workflow exist;
+  this checkbox stays open until a real artifact set has been produced,
+  downloaded on each target platform, checksum-verified, and smoke-tested.
 - [x] `CONTRIBUTING.md`, evaluator guide with anonymization guidance, structured
   diagnostic feedback issue form, and an explicit Go toolchain policy grounded
   in `go.mod` exist.

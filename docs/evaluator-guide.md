@@ -2,15 +2,16 @@
 
 This guide is for selected evaluation of Tuna **from source** while the project
 remains experimental and unreleased. It is not installation or support
-documentation for a release. Snapshot binaries, Krew packages, and supported
-versions do not exist yet. Sharing this repository does not invite broad
-outreach or imply a compatibility guarantee.
+documentation for a release. Krew packages and supported versions do not exist.
+Sharing this repository does not invite broad outreach or imply a compatibility
+guarantee.
 
 ## Build and run from source
 
-Use the exact Go toolchain named by the `go` directive in
-[`../go.mod`](../go.mod). That directive is authoritative and is what CI
-reads.
+Building from source is the default evaluator path. Use the exact Go toolchain
+named by the `go` directive in [`../go.mod`](../go.mod). That directive is
+authoritative and is what CI reads. Do not copy a Go version number into notes
+or scripts; read it from `go.mod`.
 
 ```bash
 go test ./...
@@ -40,6 +41,41 @@ Machine-readable output (`-o json`) is useful for capture, but the JSON schema
 is **not** stable while the project is pre-release. Do not treat the shape as a
 contract.
 
+## Optional maintainer-provided evaluator snapshots
+
+A maintainer may occasionally share a local snapshot of unsigned
+`kubectl-tuna` binaries for Linux and macOS (amd64 and arm64) as a convenience
+for a selected evaluator. That handoff is **not** a release: the artifacts are
+unreleased, unsupported, and unsigned. There is no download URL, tag, Krew
+package, installer, support promise, or compatibility guarantee.
+
+If you receive such files, treat source builds as authoritative when anything
+disagrees, and:
+
+1. Confirm you have exactly four binaries plus `SHA256SUMS`, `NOTICE.txt`, and
+   `BUILD-IDENTITY.txt`.
+2. Verify checksums before running anything:
+
+   ```bash
+   # Linux
+   sha256sum -c SHA256SUMS
+
+   # macOS
+   shasum -a 256 -c SHA256SUMS
+   ```
+
+3. Do not disable operating-system security controls (such as Gatekeeper or
+   notarization checks) to force an unsigned binary to run. If the host refuses
+   the binary, build from source instead.
+4. Include the snapshot identity and the contents of `BUILD-IDENTITY.txt`
+   (source commit and Go toolchain identity) with any feedback. Also report
+   `<binary> --version` output when the binary runs.
+
+Maintainers can produce a fresh local snapshot with
+`make evaluator-snapshot` (optional `SNAPSHOT_ID=…`). Output lands under the
+ignored `dist/` tree and is labeled unreleased/unsupported. Producing
+binaries locally does not publish them.
+
 ## Permissions
 
 Grant only the read access needed for the entry point you will exercise.
@@ -60,7 +96,7 @@ access than the inspection needs:
 
 | Field | Notes |
 |---|---|
-| Tuna commit | Exact git commit of the binary you built; do not report a release version |
+| Tuna commit / snapshot identity | Exact git commit of the binary you built, or the maintainer snapshot identity plus `BUILD-IDENTITY.txt` / `--version`; do not report a release version |
 | Invocation | Focus kind plus anonymized namespace/name identities |
 | Environment | Kubernetes API server version/distribution; kubelet/runtime when relevant |
 | Expected diagnosis | Established independently of Tuna (your own investigation) |

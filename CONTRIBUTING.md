@@ -59,5 +59,5 @@ description.
 - Suspected vulnerabilities or sensitive cluster evidence: follow
   [`SECURITY.md`](SECURITY.md). Do not file them as public issues.
 - Evaluator outcomes (useful chains, wrong roots, misses, confusing output,
-  installation friction from source): use the structured diagnostic feedback
+  source-build or snapshot friction): use the structured diagnostic feedback
   form and the guidance in [`docs/evaluator-guide.md`](docs/evaluator-guide.md).

@@ -1,13 +1,13 @@
 name: Diagnostic feedback
-description: Report a factual Tuna diagnostic outcome from source evaluation.
+description: Report a factual Tuna diagnostic outcome from selected evaluation.
 title: "[feedback]: "
 body:
   - type: markdown
     attributes:
       value: |
-        Use this form for evaluator outcomes from building Tuna **from source**.
-        Tuna is experimental and unreleased: there is no supported version, no
-        stable JSON schema, and no guaranteed response time.
+        Use this form for outcomes from a source build or a maintainer-provided
+        evaluator snapshot. Tuna is experimental and unreleased: there is no
+        supported version, stable JSON schema, or guaranteed response time.
 
         **Do not** paste secrets, credentials, tokens, certificates, kubeconfig,
         Secret payloads, internal hostnames/addresses, organization/customer
@@ -39,9 +39,11 @@ body:
   - type: input
     id: tuna-commit
     attributes:
-      label: Tuna commit
-      description: Exact git commit of the binary you built. Do not report a release version.
-      placeholder: abcdef0123456789…
+      label: Tuna commit or snapshot identity
+      description: >-
+        Exact git commit, or snapshot ID plus the source_commit value from
+        BUILD-IDENTITY.txt. Do not report a release version.
+      placeholder: abcdef0123456789… or unreleased-abcdef012345…
     validations:
       required: true
 
@@ -130,8 +132,8 @@ body:
     attributes:
       label: Reproduction notes
       description: >-
-        Minimal steps to rebuild from the same commit. Prefer disposable-cluster
-        or synthetic steps over production details.
+        Minimal steps to reproduce from the same commit or snapshot. Prefer
+        disposable-cluster or synthetic steps over production details.
     validations:
       required: false
 

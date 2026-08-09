@@ -21,6 +21,26 @@ jobs:
       - run: go vet ./...
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - run: go build ./...
+      - name: Validate evaluator snapshot builder
+        env:
+          SNAPSHOT_ID: ci-${{ github.sha }}
+        run: |
+          bash ./scripts/build-evaluator-snapshot.sh "$SNAPSHOT_ID"
+          artifact_dir="dist/evaluator-snapshot-${SNAPSHOT_ID}"
+          test "$(find "$artifact_dir" -maxdepth 1 -type f | wc -l)" -eq 7
+          test "$(wc -l < "${artifact_dir}/SHA256SUMS")" -eq 4
+          "${artifact_dir}/kubectl-tuna-${SNAPSHOT_ID}-linux-amd64" --version
+          for binary in "${artifact_dir}"/kubectl-tuna-*; do
+            go version -m "$binary"
+          done
+          if bash ./scripts/build-evaluator-snapshot.sh "$SNAPSHOT_ID"; then
+            echo "expected existing output to be rejected" >&2
+            exit 1
+          fi
+          if bash ./scripts/build-evaluator-snapshot.sh ../unsafe; then
+            echo "expected unsafe snapshot identity to be rejected" >&2
+            exit 1
+          fi
       - run: go test -race ./... -v
 
   e2e:

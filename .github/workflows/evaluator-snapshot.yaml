@@ -1,0 +1,36 @@
+name: Evaluator snapshot
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build unreleased evaluator snapshot
+    runs-on: ubuntu-latest
+    env:
+      SNAPSHOT_ID: unreleased-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build and verify snapshot
+        run: |
+          bash ./scripts/build-evaluator-snapshot.sh "$SNAPSHOT_ID"
+          artifact_dir="dist/evaluator-snapshot-${SNAPSHOT_ID}"
+          test "$(find "$artifact_dir" -maxdepth 1 -type f | wc -l)" -eq 7
+          test "$(wc -l < "${artifact_dir}/SHA256SUMS")" -eq 4
+          "${artifact_dir}/kubectl-tuna-${SNAPSHOT_ID}-linux-amd64" --version
+          for binary in "${artifact_dir}"/kubectl-tuna-*; do
+            go version -m "$binary"
+          done
+      - name: Upload unsupported snapshot
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kubectl-tuna-evaluator-${{ env.SNAPSHOT_ID }}
+          path: dist/evaluator-snapshot-${{ env.SNAPSHOT_ID }}
+          if-no-files-found: error
+          retention-days: 14
