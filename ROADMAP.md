@@ -72,8 +72,9 @@ operators the author did not construct.
    rollout-target causality are already covered. Universal same-Pod Event
    age/recency is not claimed solved by UID matching.
 4. Prepare a friction-light evaluator path without actively recruiting yet:
-   unsigned snapshot binaries with checksums, a minimal evaluator guide,
-   `CONTRIBUTING.md`, a feedback template, and an explicit Go toolchain policy.
+   the minimal evaluator guide, `CONTRIBUTING.md`, structured diagnostic
+   feedback form, and explicit Go toolchain policy are in place; unsigned
+   snapshot binaries with checksums remain open.
 5. Start external operator trials after the owner-led pass and evaluator path
    are usable. This is a sequencing delay, not a replacement for independent
    validation. Treat
@@ -117,8 +118,10 @@ parallel after soft-public:
   environment evidence.
 - [ ] Snapshot evaluator binaries exist for Linux and macOS on amd64 and arm64,
   with checksums and an explicit “unreleased/unsupported” label.
-- [ ] `CONTRIBUTING.md`, evaluator instructions, anonymization guidance,
-  structured feedback/incident templates, topics, and issue templates exist.
+- [x] `CONTRIBUTING.md`, evaluator guide with anonymization guidance, structured
+  diagnostic feedback issue form, and an explicit Go toolchain policy grounded
+  in `go.mod` exist.
+- [ ] Repository topics and remaining general issue templates exist.
 - [x] Deterministic incomplete-RBAC behavior has a real-cluster reproduction;
   partial evidence must not become false absence.
 - [ ] External operator outreach is intentionally paused until the owner-led

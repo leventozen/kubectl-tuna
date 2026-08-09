@@ -1,0 +1,158 @@
+name: Diagnostic feedback
+description: Report a factual Tuna diagnostic outcome from source evaluation.
+title: "[feedback]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for evaluator outcomes from building Tuna **from source**.
+        Tuna is experimental and unreleased: there is no supported version, no
+        stable JSON schema, and no guaranteed response time.
+
+        **Do not** paste secrets, credentials, tokens, certificates, kubeconfig,
+        Secret payloads, internal hostnames/addresses, organization/customer
+        names, or unsanitized cluster evidence. Review every attachment and
+        paste before submitting.
+
+        Suspected vulnerabilities or sensitive evidence that cannot be safely
+        sanitized belong in
+        [private vulnerability reporting](https://github.com/leventozen/kubectl-tuna/security/advisories/new),
+        not in a public issue. See `SECURITY.md`.
+
+  - type: dropdown
+    id: outcome-category
+    attributes:
+      label: Outcome category
+      description: Choose the primary outcome for this report.
+      options:
+        - useful chain
+        - wrong root
+        - missed diagnosis
+        - healthy false positive
+        - abstention/unknown
+        - partial evidence
+        - installation failure
+        - confusing output
+    validations:
+      required: true
+
+  - type: input
+    id: tuna-commit
+    attributes:
+      label: Tuna commit
+      description: Exact git commit of the binary you built. Do not report a release version.
+      placeholder: abcdef0123456789…
+    validations:
+      required: true
+
+  - type: dropdown
+    id: focus-kind
+    attributes:
+      label: Invocation focus kind
+      description: Entry point used for the inspection.
+      options:
+        - service
+        - deployment
+        - pod
+        - build/install only (no inspection)
+        - other / unclear
+    validations:
+      required: true
+
+  - type: input
+    id: focus-identities
+    attributes:
+      label: Focus identities (anonymized)
+      description: >-
+        Namespace and resource name aliases only. Keep selector/owner
+        relationships consistent. Enter "not applicable" if no inspection ran.
+      placeholder: >-
+        ns/demo-a, Service/svc-payments → Pod/pod-payments-1; or not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: kubernetes-environment
+    attributes:
+      label: Kubernetes environment
+      description: >-
+        API server version and distribution. Include kubelet/runtime only when
+        relevant. No cluster endpoints or tenant names. Enter "not reached" if
+        build/install failed before cluster access.
+      placeholder: >-
+        API server 1.36.x, kind/k3s/EKS/GKE/AKS/other (unspecified); or not reached
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-diagnosis
+    attributes:
+      label: Expected behavior or diagnosis
+      description: >-
+        What you independently concluded was wrong or healthy. For a
+        build/install failure, state which documented step you expected to
+        succeed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-result
+    attributes:
+      label: Actual Tuna result
+      description: >-
+        Health, root-cause candidates, partial/unknown notes, build error, or
+        confusing wording. Paste only sanitized excerpts.
+    validations:
+      required: true
+
+  - type: textarea
+    id: usefulness-impact
+    attributes:
+      label: Usefulness / diagnosis-time impact
+      description: >-
+        Did the chain shorten diagnosis, mislead you, or change nothing?
+        Approximate time impact is fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: partial-unknown
+    attributes:
+      label: Partial evidence or unknown behavior
+      description: >-
+        Permission denials, missing Events, skipped rules, suspended evaluation,
+        or other incompleteness that mattered.
+    validations:
+      required: false
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction notes
+      description: >-
+        Minimal steps to rebuild from the same commit. Prefer disposable-cluster
+        or synthetic steps over production details.
+    validations:
+      required: false
+
+  - type: textarea
+    id: sanitized-evidence
+    attributes:
+      label: Optional sanitized evidence
+      description: >-
+        Reviewed excerpts only. Preserve selectors/labels as aliases, owner
+        links, container identity, status/conditions, quantities,
+        timestamps/order, event semantics, and API failures when they matter.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: sanitization-confirmation
+    attributes:
+      label: Sanitization confirmation
+      description: Required before submit.
+      options:
+        - label: >-
+            I reviewed this report and any evidence; it contains no
+            secrets/credentials and no unsanitized cluster identifiers.
+          required: true

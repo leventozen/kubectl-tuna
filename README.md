@@ -278,6 +278,14 @@ pilot constrained external rule authoring, then consider more resource
 families and distribution. Krew submission and a tagged version are
 deliberately gated until the existing diagnoses are trustworthy.
 
+## Contributing and evaluation
+
+Selected evaluation is from source only while Tuna remains unreleased. See
+[`docs/evaluator-guide.md`](docs/evaluator-guide.md) for a minimal read-only
+inspection path, outcome categories, and anonymization guidance. Local gates
+and the in-tree rule contribution bar are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md). This is not a call for broad outreach.
+
 ## Security
 
 Do not report suspected vulnerabilities or sensitive cluster evidence in a
