@@ -203,8 +203,13 @@ to Deployment unavailability.
 Additional fixture and adversarial tests cover healthy state, missing ConfigMaps,
 ambiguous SIGKILL signals, eviction, EndpointSlice semantics, API failures, and
 deterministic JSON output. CI runs the same suite with digest-pinned Kind images
-for Kubernetes 1.34.8, 1.35.5, and 1.36.1. The provisional support gate remains
-open for corpus precision, environment diversity, and external-operator
+for the exact patches in the central
+[`kubernetes-window.json`](testdata/compatibility/kubernetes-window.json)
+manifest. The tested patches are currently 1.34.8, 1.35.5, and 1.36.1; newer
+upstream patches are recorded separately when matching Kind images are not yet
+available. The [compatibility maintenance checklist](docs/kubernetes-compatibility.md)
+defines how patch and minor changes are reviewed. The provisional support gate
+remains open for corpus precision, environment diversity, and external-operator
 validation.
 
 `make corpus` runs the machine-readable seed-corpus contract. Its current eight

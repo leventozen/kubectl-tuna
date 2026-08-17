@@ -115,8 +115,10 @@ Open it as soon as these minimum safety and honesty blockers are complete:
 These are important but do not block source visibility; complete them in
 parallel after soft-public:
 
-- [ ] CI follows the latest patch for each maintained minor and records exact
-  environment evidence.
+- [ ] CI runs the latest available digest-pinned Kind patch for each maintained
+  minor and records exact environment evidence. Environment evidence, a central
+  compatibility manifest, and automated upstream/image drift detection exist;
+  matching Kind images currently lag the latest upstream patches.
 - [ ] Snapshot evaluator binaries exist for Linux and macOS on amd64 and arm64,
   with checksums and an explicit “unreleased/unsupported” label. Local
   build path (`make evaluator-snapshot`) and a manual artifact workflow exist;
@@ -279,10 +281,14 @@ whether the model survives Kubernetes behavior it was not authored around.
   scenario phase's result JSON as per-minor artifacts; assertion expectations
   remain in the executable e2e contract. Sanitized field cases must carry the
   same provenance when they are added.
-- [ ] Keep the matrix on the latest patch of each maintained minor and define a
-  repeatable review checklist for adding a new minor. Fail-closed compatibility
-  becomes an adoption failure if a solo maintainer cannot advance the window
-  promptly.
+- [x] Define a repeatable patch/minor review checklist, derive CI's matrix from
+  one machine-readable compatibility manifest, enforce registry parity in
+  tests, and schedule upstream/image drift detection.
+- [ ] Keep the matrix on the latest available digest-pinned Kind patch of each
+  maintained minor. Kubernetes has newer patches than the currently published
+  Kind images, so the manifest records both truths and fails when an advance
+  becomes possible. Fail-closed compatibility becomes an adoption failure if a
+  solo maintainer cannot advance the window promptly.
 - [ ] Preserve selected compatibility baselines beyond the 30-day CI artifact
   lifetime. Ephemeral workflow artifacts improve debugging but are not a
   durable validation corpus.

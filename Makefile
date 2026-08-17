@@ -1,4 +1,4 @@
-.PHONY: build test vet benchmark corpus e2e demo install-plugin demo-output demo-gif evaluator-snapshot
+.PHONY: build test vet benchmark corpus e2e check-kubernetes-window demo install-plugin demo-output demo-gif evaluator-snapshot
 
 PREFIX ?= $(HOME)/.local
 BIN_DIR ?= $(PREFIX)/bin
@@ -39,6 +39,10 @@ install-plugin: build
 # Requires kubectl pointing at a disposable cluster (e.g. kind create cluster)
 e2e:
 	./examples/e2e.sh
+
+# Requires network access and Docker. Checks upstream patch and Kind image drift.
+check-kubernetes-window:
+	./scripts/check-kubernetes-window.sh
 
 # make demo SCENARIO=broken-readiness-port
 demo:
