@@ -59,8 +59,8 @@ func TestConsoleShowsKubernetesVersionAndSkippedRule(t *testing.T) {
 			Source: graph.SourceRuleCompatibility, Resource: ref, Message: "one rule skipped", AffectsHealth: true,
 		}},
 		Rules: diag.RuleEvaluationSummary{Skipped: []diag.RuleSkip{{
-			ID: "example-rule", Reason: "cluster v1.37.0 is outside the reviewed range 1.34-1.36",
-			Compatibility: diag.KubernetesCompatibility{Min: "1.34", Max: "1.36"},
+			ID: "example-rule", Reason: "cluster v1.38.0 is outside the reviewed range 1.34-1.37",
+			Compatibility: diag.KubernetesCompatibility{Min: "1.34", Max: "1.37"},
 		}}},
 	}
 

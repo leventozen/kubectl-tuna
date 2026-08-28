@@ -40,7 +40,7 @@ install-plugin: build
 e2e:
 	./examples/e2e.sh
 
-# Requires network access and Docker. Checks upstream patch and Kind image drift.
+# Requires network access. Checks upstream patch and Kind image drift.
 check-kubernetes-window:
 	./scripts/check-kubernetes-window.sh
 

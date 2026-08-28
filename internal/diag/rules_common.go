@@ -12,7 +12,7 @@ import (
 
 const (
 	minReviewedKubernetes = "1.34"
-	maxReviewedKubernetes = "1.36"
+	maxReviewedKubernetes = "1.37"
 )
 
 func builtInRule(rule Rule, family RuleFamily, description string, findingTypes ...FindingType) RuleRegistration {

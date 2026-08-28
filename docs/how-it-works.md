@@ -73,13 +73,14 @@ The engine evaluates the rule only when the server version is inside that
 range. Outside it, the rule is listed under `rules.skipped`, the missing
 coverage is visible, and an otherwise healthy result becomes `unknown`.
 
-The current built-in range is Kubernetes 1.34–1.36, the three maintained minor
-branches at the time of this pre-release work. The digest-pinned Kind CI matrix
-for these minors has been observed green, but this is not yet a support claim:
-the corpus, mixed-component, distribution, and external-operator gates remain
-open. A new Kubernetes minor does not become compatible merely because the API
-request still succeeds. The window is reviewed and advanced deliberately. See
-the Kubernetes
+The current built-in range is Kubernetes 1.34–1.37: the three regular release
+branches plus 1.34 while it remains in maintenance mode. This reviewed range
+is configured in the digest-pinned Kind CI matrix; its latest rolling advance
+must be observed green before it is mechanically validated. Even a green matrix
+is not a support claim: the corpus, mixed-component, distribution, and
+external-operator gates remain open. A new Kubernetes minor does not become
+compatible merely because the API request still succeeds. The window is
+reviewed and advanced deliberately. See the Kubernetes
 [release list](https://kubernetes.io/releases/) and
 [version skew policy](https://kubernetes.io/releases/version-skew-policy/).
 

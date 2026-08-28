@@ -29,7 +29,7 @@ compares the discovered API server minor version with the rule's inclusive
 reviewed range. A rule outside that range is skipped and named in JSON under
 `rules.skipped`; it is not optimistically executed against unknown semantics.
 
-The current built-ins declare Kubernetes 1.34 through 1.36. This is a reviewed
+The current built-ins declare Kubernetes 1.34 through 1.37. This is a reviewed
 semantic window, not a support guarantee. Real-cluster e2e coverage across the
 entire window is still a release gate.
 

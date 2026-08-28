@@ -115,10 +115,10 @@ Open it as soon as these minimum safety and honesty blockers are complete:
 These are important but do not block source visibility; complete them in
 parallel after soft-public:
 
-- [ ] CI runs the latest available digest-pinned Kind patch for each maintained
-  minor and records exact environment evidence. Environment evidence, a central
-  compatibility manifest, and automated upstream/image drift detection exist;
-  matching Kind images currently lag the latest upstream patches.
+- [ ] CI derives the latest available digest-pinned Kind patch for each non-EOL
+  regular or maintenance-mode minor from a central manifest and records exact
+  environment evidence. The manifest is configured for 1.34.11, 1.35.8,
+  1.36.4, and 1.37.0; this stays open until that full matrix is observed green.
 - [ ] Snapshot evaluator binaries exist for Linux and macOS on amd64 and arm64,
   with checksums and an explicit “unreleased/unsupported” label. Local
   build path (`make evaluator-snapshot`) and a manual artifact workflow exist;
@@ -263,14 +263,13 @@ whether the model survives Kubernetes behavior it was not authored around.
 - [x] Add healthy and recovery e2e cases so the suite measures false positives,
   not only detection.
 - [x] Run the full healthy, broken, and recovery e2e suite against every minor
-  in the provisional window. Today that means 1.34, 1.35, and 1.36; keep it a
-  rolling window aligned with maintained Kubernetes release branches. The
-  configured matrix was observed green on both initial and follow-up `main`
-  workflow runs.
-- [x] Configure CI with Kind v0.32.0 digest-pinned images for Kubernetes 1.34.8,
-  1.35.5, and 1.36.1, running the exact same e2e contract on each. The gate
-  is now mechanically green; corpus precision and environment diversity remain
-  open and are not implied by that result.
+  in the provisional rolling window aligned with maintained Kubernetes release
+  branches. The initial 1.34–1.36 matrix was observed green; each rolling window
+  advance must separately satisfy the open current-matrix item below.
+- [x] Configure CI with Kind v0.32.0 and digest-pinned images, running the exact
+  same e2e contract on each minor. The configured images are Kubernetes 1.34.11,
+  1.35.8, 1.36.4, and 1.37.0. A green matrix validates these project-authored
+  scenarios; corpus precision and environment diversity remain open.
 - [x] Add a machine-readable seed-corpus manifest and harness that asserts
   exact root-cause sets, health, and partial state across existing fixtures.
   All eight snapshots are explicitly labeled `synthetic-fixture`; they do not
@@ -285,10 +284,11 @@ whether the model survives Kubernetes behavior it was not authored around.
   one machine-readable compatibility manifest, enforce registry parity in
   tests, and schedule upstream/image drift detection.
 - [ ] Keep the matrix on the latest available digest-pinned Kind patch of each
-  maintained minor. Kubernetes has newer patches than the currently published
-  Kind images, so the manifest records both truths and fails when an advance
-  becomes possible. Fail-closed compatibility becomes an adoption failure if a
-  solo maintainer cannot advance the window promptly.
+  non-EOL regular or maintenance-mode minor. The manifest records upstream and
+  tested patches separately, detects drift on a schedule, and bounds
+  network/registry checks. The current four-image advance awaits a green full
+  matrix; fail-closed compatibility becomes an adoption failure if a solo
+  maintainer does not respond to future drift promptly.
 - [ ] Preserve selected compatibility baselines beyond the 30-day CI artifact
   lifetime. Ephemeral workflow artifacts improve debugging but are not a
   durable validation corpus.

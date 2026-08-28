@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	utilversion "k8s.io/apimachinery/pkg/util/version"
@@ -20,6 +21,7 @@ type kubernetesWindowManifest struct {
 
 type kubernetesWindowEntry struct {
 	Minor               string `json:"minor"`
+	UpstreamEndOfLife   string `json:"upstreamEndOfLife"`
 	UpstreamLatestPatch string `json:"upstreamLatestPatch"`
 	TestedPatch         string `json:"testedPatch"`
 	NodeImage           string `json:"nodeImage"`
@@ -47,12 +49,19 @@ func TestKubernetesWindowManifestMatchesRulesAndE2EMatrix(t *testing.T) {
 
 	imagePattern := regexp.MustCompile(`^kindest/node:v([0-9]+\.[0-9]+\.[0-9]+)@sha256:[0-9a-f]{64}$`)
 	seen := make(map[string]struct{}, len(manifest.Entries))
+	var previousEndOfLife time.Time
 	for i, entry := range manifest.Entries {
 		expectedMinor := fmt.Sprintf("%d.%d", min.Major(), int(min.Minor())+i)
 		require.Equal(t, expectedMinor, entry.Minor, "entries must be unique, sorted, and contiguous")
 		_, duplicate := seen[entry.Minor]
 		require.False(t, duplicate, "duplicate Kubernetes minor %s", entry.Minor)
 		seen[entry.Minor] = struct{}{}
+		endOfLife, err := time.Parse("2006-01-02", entry.UpstreamEndOfLife)
+		require.NoError(t, err, "invalid upstream end-of-life date for Kubernetes %s", entry.Minor)
+		if !previousEndOfLife.IsZero() {
+			require.True(t, endOfLife.After(previousEndOfLife), "end-of-life dates must increase with minor versions")
+		}
+		previousEndOfLife = endOfLife
 
 		tested, err := utilversion.ParseSemantic(entry.TestedPatch)
 		require.NoError(t, err, "invalid tested patch for Kubernetes %s", entry.Minor)
