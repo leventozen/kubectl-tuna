@@ -14,6 +14,18 @@ TUNA_BIN="$ROOT/bin/kubectl-tuna"
 ARTIFACT_DIR="${TUNA_E2E_ARTIFACT_DIR:-$ROOT/artifacts/e2e}"
 E2E_DISTRIBUTION="${TUNA_E2E_DISTRIBUTION:-unknown}"
 E2E_CLUSTER_NAME="${TUNA_E2E_CLUSTER_NAME:-unknown}"
+E2E_EXPECTED_KUBERNETES="${TUNA_E2E_EXPECTED_KUBERNETES:-unknown}"
+E2E_KIND_NODE_IMAGE="${TUNA_E2E_KIND_NODE_IMAGE:-unknown}"
+
+TUNA_SOURCE_COMMIT="unavailable"
+TUNA_SOURCE_DIRTY="true"
+if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+	TUNA_SOURCE_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
+	if [ -z "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ]; then
+		TUNA_SOURCE_DIRTY="false"
+	fi
+fi
+TUNA_GO_VERSION="$(go env GOVERSION)"
 
 mkdir -p "$ARTIFACT_DIR/cases"
 
@@ -27,7 +39,16 @@ capture_environment_artifact() {
 	python3 -c '
 import datetime, json, subprocess, sys
 
-output_path, distribution, cluster_name = sys.argv[1:]
+(
+    output_path,
+    distribution,
+    cluster_name,
+    expected_kubernetes,
+    kind_node_image,
+    tuna_commit,
+    tuna_dirty,
+    tuna_go_version,
+) = sys.argv[1:]
 version = json.loads(subprocess.run(
     ["kubectl", "version", "-o", "json"], check=True, capture_output=True, text=True,
 ).stdout)
@@ -49,17 +70,29 @@ for node in node_list.get("items", []):
     })
 
 artifact = {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
+    "evidenceClass": "live-reproduction",
     "capturedAt": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
     "distribution": distribution,
     "clusterName": cluster_name,
+    "tuna": {
+        "sourceCommit": tuna_commit,
+        "sourceDirty": tuna_dirty == "true",
+        "goVersion": tuna_go_version,
+    },
+    "execution": {
+        "expectedKubernetes": expected_kubernetes,
+        "kindNodeImage": kind_node_image,
+    },
     "apiServer": version.get("serverVersion", {}),
     "nodes": sorted(nodes, key=lambda node: node["name"]),
 }
 with open(output_path, "w", encoding="utf-8") as stream:
     json.dump(artifact, stream, indent=2, sort_keys=True)
     stream.write("\n")
-' "$ARTIFACT_DIR/environment.json" "$E2E_DISTRIBUTION" "$E2E_CLUSTER_NAME"
+' "$ARTIFACT_DIR/environment.json" "$E2E_DISTRIBUTION" "$E2E_CLUSTER_NAME" \
+  "$E2E_EXPECTED_KUBERNETES" "$E2E_KIND_NODE_IMAGE" "$TUNA_SOURCE_COMMIT" \
+  "$TUNA_SOURCE_DIRTY" "$TUNA_GO_VERSION"
 }
 
 write_case_result() {
@@ -1010,5 +1043,11 @@ check_multiple_replicaset_rollout
 check service-selector-mismatch service checkout-api 90 service-selector-no-pods
 check failed-scheduling deployment analytics 90 pod-unschedulable
 check oomkilled deployment billing 240 container-oomkilled
+
+if [ "$fail" -eq 0 ] && [ "$E2E_EXPECTED_KUBERNETES" != "unknown" ] && \
+	[ "$E2E_KIND_NODE_IMAGE" != "unknown" ]; then
+	python3 "$ROOT/scripts/summarize-e2e-baseline.py" \
+		"$ARTIFACT_DIR" "$ARTIFACT_DIR/compatibility-baseline.json"
+fi
 
 exit "$fail"

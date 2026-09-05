@@ -47,6 +47,7 @@ jobs:
       - run: go vet ./...
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - run: go build ./...
+      - run: make e2e-baseline-test
       - name: Validate evaluator snapshot builder
         env:
           SNAPSHOT_ID: ci-${{ github.sha }}
@@ -92,6 +93,8 @@ jobs:
           TUNA_E2E_ARTIFACT_DIR: artifacts/e2e
           TUNA_E2E_DISTRIBUTION: kind
           TUNA_E2E_CLUSTER_NAME: tuna-e2e
+          TUNA_E2E_EXPECTED_KUBERNETES: ${{ matrix.kubernetes }}
+          TUNA_E2E_KIND_NODE_IMAGE: ${{ matrix.node_image }}
         run: ./examples/e2e.sh
       - name: Upload e2e evidence
         if: always()

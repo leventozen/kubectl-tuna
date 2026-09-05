@@ -40,9 +40,19 @@ expected diagnosis is also present.
 Every CI Kubernetes-minor job uploads one `tuna-e2e-kubernetes-*` artifact.
 It contains the exact API server build data, distribution label, Node kubelet
 versions, container runtimes, operating-system details, and the JSON result for
-each completed scenario phase. The expectations remain in the executable e2e
-contract rather than introducing a second, prematurely stable case schema.
-Artifacts are retained for 30 days.
+each completed scenario phase. It also records the exact Tuna source commit,
+Go toolchain, expected Kubernetes patch, and digest-pinned Kind image. A
+successful run emits `compatibility-baseline.json`: a deterministic summary of
+health, partial state, root types, finding types, warnings, and rule execution
+with resource and Node identities removed. Raw artifacts are retained for 30
+days; selected reviewed summaries can be committed under
+`testdata/compatibility/baselines/` for durable historical comparison.
+
+The summary generator rejects dirty Tuna source trees, unpinned Kind images,
+API-server version mismatches, inconsistent root markers, and malformed case
+results. Run its focused tests with `make e2e-baseline-test`. A summary remains
+project-authored live-reproduction evidence; compacting it does not turn it
+into independent field evidence or a replayable corpus case.
 
 These are `live-reproduction` observations because a real API server and
 controllers produced the state. They are still project-authored scenarios, not

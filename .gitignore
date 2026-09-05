@@ -2,5 +2,6 @@ bin/
 dist/
 artifacts/
 .venv-gif/
+__pycache__/
 *.test
 .DS_Store

@@ -1,4 +1,4 @@
-.PHONY: build test vet benchmark corpus e2e check-kubernetes-window demo install-plugin demo-output demo-gif evaluator-snapshot
+.PHONY: build test vet benchmark corpus e2e e2e-baseline-test check-kubernetes-window demo install-plugin demo-output demo-gif evaluator-snapshot
 
 PREFIX ?= $(HOME)/.local
 BIN_DIR ?= $(PREFIX)/bin
@@ -39,6 +39,9 @@ install-plugin: build
 # Requires kubectl pointing at a disposable cluster (e.g. kind create cluster)
 e2e:
 	./examples/e2e.sh
+
+e2e-baseline-test:
+	python3 -m unittest scripts/test_summarize_e2e_baseline.py
 
 # Requires network access. Checks upstream patch and Kind image drift.
 check-kubernetes-window:
