@@ -299,7 +299,7 @@ whether the model survives Kubernetes behavior it was not authored around.
   green on `main`, including its evidence uploads; fail-closed compatibility
   becomes an adoption failure if a solo maintainer does not respond to future
   drift promptly.
-- [ ] Split validation into three deliberate tiers: fast local unit/vet/lint
+- [x] Split validation into three deliberate tiers: fast local unit/vet/lint
   checks without cluster or image setup; selectable single-scenario E2E for the
   behavior being changed; and the full scenario × Kubernetes matrix only in
   remote CI or an explicit milestone run. Baseline promotion must reuse a

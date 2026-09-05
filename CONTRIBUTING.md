@@ -17,13 +17,21 @@ authoritative version source.
 Before opening a pull request:
 
 1. Keep Go sources formatted (`gofmt`).
-2. Run `go test ./...`.
-3. Run `go vet ./...`.
-4. When diagnostics, rules, or seed-corpus fixtures change, also run
+2. Run `make verify`; it covers Go unit tests/vet plus cluster-free shell and
+   baseline tooling checks.
+3. When diagnostics, rules, or seed-corpus fixtures change, also run
    `make corpus`.
 
-Run Kind/e2e (`make e2e` or `examples/e2e.sh`) only when the change affects
-relevant live Kubernetes behavior, and only against a disposable cluster.
+Run targeted Kind/E2E only when the change affects relevant live Kubernetes
+behavior, and only against a disposable cluster:
+
+```sh
+make e2e-list
+make e2e E2E_CASE=healthy-service
+```
+
+`make e2e-full` is an explicit integration milestone, not a normal local
+pre-commit check. The full scenario × Kubernetes-version matrix runs in CI.
 
 ## Rule contributions
 

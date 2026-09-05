@@ -53,6 +53,15 @@ def summarize(artifact_dir: Path) -> dict:
     node_image = require_string(execution.get("kindNodeImage"), "execution.kindNodeImage")
     if not re.fullmatch(r"kindest/node:v[^@]+@sha256:[0-9a-f]{64}", node_image):
         fail("execution.kindNodeImage must be a digest-pinned Kind image")
+    if execution.get("fullSuite") is not True:
+        fail("durable baselines require a successful full E2E suite")
+    selected_cases = execution.get("selectedCases")
+    if (
+        not isinstance(selected_cases, list)
+        or not selected_cases
+        or any(not isinstance(case, str) or not case for case in selected_cases)
+    ):
+        fail("execution.selectedCases must contain the full scenario selection")
 
     api_server = environment.get("apiServer")
     if not isinstance(api_server, dict):
@@ -184,6 +193,7 @@ def summarize(artifact_dir: Path) -> dict:
             "sourceCommit": source_commit,
             "goVersion": require_string(tuna.get("goVersion"), "tuna.goVersion"),
         },
+        "suite": {"full": True, "selectedCases": selected_cases},
         "kubernetes": {
             "distribution": require_string(environment.get("distribution"), "distribution"),
             "expectedVersion": expected_version,

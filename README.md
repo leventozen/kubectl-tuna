@@ -200,6 +200,18 @@ recreated Pod that only has an image-pull failure. The multiple-ReplicaSet case
 proves that only a Pod owned by the Deployment's current-template ReplicaSet may
 directly explain `rollout-stuck`, while an older active Pod can still contribute
 to Deployment unavailability.
+
+Local validation is intentionally targeted so a normal change does not start
+the full real-cluster suite:
+
+```bash
+make e2e-list
+make e2e E2E_CASE=healthy-service
+```
+
+`make e2e-full` is reserved for an explicit integration milestone. CI runs the
+complete scenario set across the configured Kubernetes-version matrix.
+
 Additional fixture and adversarial tests cover healthy state, missing ConfigMaps,
 ambiguous SIGKILL signals, eviction, EndpointSlice semantics, API failures, and
 deterministic JSON output. CI runs the same suite with digest-pinned Kind images

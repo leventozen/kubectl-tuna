@@ -33,6 +33,8 @@ class SummarizeE2EBaselineTest(unittest.TestCase):
             "execution": {
                 "expectedKubernetes": "1.37.0",
                 "kindNodeImage": "kindest/node:v1.37.0@sha256:" + "b" * 64,
+                "selectedCases": ["example"],
+                "fullSuite": True,
             },
             "apiServer": {"gitVersion": "v1.37.0", "gitCommit": "c" * 40},
             "nodes": [
@@ -106,6 +108,13 @@ class SummarizeE2EBaselineTest(unittest.TestCase):
         self.write_inputs()
 
         with self.assertRaisesRegex(ValueError, "rootCauses disagree"):
+            MODULE.summarize(self.artifact_dir)
+
+    def test_rejects_targeted_run_as_durable_baseline(self):
+        self.environment["execution"]["fullSuite"] = False
+        self.write_inputs()
+
+        with self.assertRaisesRegex(ValueError, "successful full E2E suite"):
             MODULE.summarize(self.artifact_dir)
 
 

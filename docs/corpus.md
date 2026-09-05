@@ -54,6 +54,12 @@ results. Run its focused tests with `make e2e-baseline-test`. A summary remains
 project-authored live-reproduction evidence; compacting it does not turn it
 into independent field evidence or a replayable corpus case.
 
+For local real-cluster work, list scenarios with `make e2e-list` and run only
+the affected one with `make e2e E2E_CASE=<case>`. `make e2e-full` is reserved
+for an explicit integration milestone. Targeted runs still retain raw evidence
+but cannot emit a durable compatibility baseline; only a successful `--all`
+run with exact version and image provenance may do that.
+
 These are `live-reproduction` observations because a real API server and
 controllers produced the state. They are still project-authored scenarios, not
 independent field incidents, and the result JSON alone is insufficient to

@@ -10,8 +10,95 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$DIR")"
+
+usage() {
+	cat <<'EOF'
+Usage:
+  ./examples/e2e.sh --list
+  ./examples/e2e.sh CASE
+  ./examples/e2e.sh --all
+
+Run one named E2E scenario by default. Use --all only for an explicit full
+validation milestone or remote CI run.
+EOF
+}
+
+ALL_E2E_CASES=(
+	broken-readiness-port
+	healthy-service
+	incomplete-rbac
+	multiple-workloads-one-service
+	multi-container-isolation
+	stale-event-identity
+	multiple-replicaset-rollout
+	service-selector-mismatch
+	failed-scheduling
+	oomkilled
+)
+
+list_cases() {
+	printf '%s\n' "${ALL_E2E_CASES[@]}"
+}
+
+if [ "$#" -eq 1 ]; then
+	case "$1" in
+	--list)
+		list_cases
+		exit 0
+		;;
+	-h|--help)
+		usage
+		exit 0
+		;;
+	esac
+fi
+if [ "$#" -eq 0 ]; then
+	usage >&2
+	exit 2
+fi
+
+RUN_FULL_SUITE="false"
+if [ "$1" = "--all" ]; then
+	if [ "$#" -ne 1 ]; then
+		printf 'e2e: --all cannot be combined with named scenarios\n' >&2
+		exit 2
+	fi
+	RUN_FULL_SUITE="true"
+	SELECTED_CASES=("${ALL_E2E_CASES[@]}")
+else
+	if [ "$#" -ne 1 ]; then
+		printf 'e2e: select exactly one scenario per targeted run\n' >&2
+		exit 2
+	fi
+	selected="$1"
+	known="false"
+	for candidate in "${ALL_E2E_CASES[@]}"; do
+		if [ "$selected" = "$candidate" ]; then
+			known="true"
+			break
+		fi
+	done
+	if [ "$known" != "true" ]; then
+		printf 'e2e: unknown scenario %q; choose one of:\n' "$selected" >&2
+		list_cases >&2
+		exit 2
+	fi
+	SELECTED_CASES=("$selected")
+fi
+SELECTED_CASES_CSV="$(IFS=,; printf '%s' "${SELECTED_CASES[*]}")"
+
 TUNA_BIN="$ROOT/bin/kubectl-tuna"
-ARTIFACT_DIR="${TUNA_E2E_ARTIFACT_DIR:-$ROOT/artifacts/e2e}"
+if [ -n "${TUNA_E2E_ARTIFACT_DIR:-}" ]; then
+	ARTIFACT_DIR="$TUNA_E2E_ARTIFACT_DIR"
+else
+	mkdir -p "$ROOT/artifacts"
+	if [ "$RUN_FULL_SUITE" = "true" ]; then
+		run_label="full"
+	else
+		run_label="${SELECTED_CASES[0]}"
+	fi
+	ARTIFACT_DIR="$(mktemp -d "$ROOT/artifacts/e2e-${run_label}.XXXXXX")"
+fi
 E2E_DISTRIBUTION="${TUNA_E2E_DISTRIBUTION:-unknown}"
 E2E_CLUSTER_NAME="${TUNA_E2E_CLUSTER_NAME:-unknown}"
 E2E_EXPECTED_KUBERNETES="${TUNA_E2E_EXPECTED_KUBERNETES:-unknown}"
@@ -28,6 +115,7 @@ fi
 TUNA_GO_VERSION="$(go env GOVERSION)"
 
 mkdir -p "$ARTIFACT_DIR/cases"
+printf 'E2E artifacts: %s\n' "$ARTIFACT_DIR"
 
 go build -o "$TUNA_BIN" "$ROOT/cmd/kubectl-tuna"
 
@@ -45,6 +133,8 @@ import datetime, json, subprocess, sys
     cluster_name,
     expected_kubernetes,
     kind_node_image,
+    selected_cases,
+    full_suite,
     tuna_commit,
     tuna_dirty,
     tuna_go_version,
@@ -83,6 +173,8 @@ artifact = {
     "execution": {
         "expectedKubernetes": expected_kubernetes,
         "kindNodeImage": kind_node_image,
+        "selectedCases": selected_cases.split(","),
+        "fullSuite": full_suite == "true",
     },
     "apiServer": version.get("serverVersion", {}),
     "nodes": sorted(nodes, key=lambda node: node["name"]),
@@ -91,8 +183,8 @@ with open(output_path, "w", encoding="utf-8") as stream:
     json.dump(artifact, stream, indent=2, sort_keys=True)
     stream.write("\n")
 ' "$ARTIFACT_DIR/environment.json" "$E2E_DISTRIBUTION" "$E2E_CLUSTER_NAME" \
-  "$E2E_EXPECTED_KUBERNETES" "$E2E_KIND_NODE_IMAGE" "$TUNA_SOURCE_COMMIT" \
-  "$TUNA_SOURCE_DIRTY" "$TUNA_GO_VERSION"
+  "$E2E_EXPECTED_KUBERNETES" "$E2E_KIND_NODE_IMAGE" "$SELECTED_CASES_CSV" \
+  "$RUN_FULL_SUITE" "$TUNA_SOURCE_COMMIT" "$TUNA_SOURCE_DIRTY" "$TUNA_GO_VERSION"
 }
 
 write_case_result() {
@@ -1033,18 +1125,51 @@ for f in res.get('findings',[]):
 	fi
 }
 
-check_recovery broken-readiness-port service payment 120 readiness-probe-port-mismatch
-check_healthy healthy-service service healthy-api 120
-check_incomplete_rbac
-check_multiple_workloads
-check_multi_container
-check_stale_event_identity
-check_multiple_replicaset_rollout
-check service-selector-mismatch service checkout-api 90 service-selector-no-pods
-check failed-scheduling deployment analytics 90 pod-unschedulable
-check oomkilled deployment billing 240 container-oomkilled
+run_selected_case() {
+	case "$1" in
+	broken-readiness-port)
+		check_recovery broken-readiness-port service payment 120 readiness-probe-port-mismatch
+		;;
+	healthy-service)
+		check_healthy healthy-service service healthy-api 120
+		;;
+	incomplete-rbac)
+		check_incomplete_rbac
+		;;
+	multiple-workloads-one-service)
+		check_multiple_workloads
+		;;
+	multi-container-isolation)
+		check_multi_container
+		;;
+	stale-event-identity)
+		check_stale_event_identity
+		;;
+	multiple-replicaset-rollout)
+		check_multiple_replicaset_rollout
+		;;
+	service-selector-mismatch)
+		check service-selector-mismatch service checkout-api 90 service-selector-no-pods
+		;;
+	failed-scheduling)
+		check failed-scheduling deployment analytics 90 pod-unschedulable
+		;;
+	oomkilled)
+		check oomkilled deployment billing 240 container-oomkilled
+		;;
+	*)
+		printf 'e2e: internal error: unhandled scenario %q\n' "$1" >&2
+		return 2
+		;;
+	esac
+}
 
-if [ "$fail" -eq 0 ] && [ "$E2E_EXPECTED_KUBERNETES" != "unknown" ] && \
+for selected_case in "${SELECTED_CASES[@]}"; do
+	run_selected_case "$selected_case"
+done
+
+if [ "$fail" -eq 0 ] && [ "$RUN_FULL_SUITE" = "true" ] && \
+	[ "$E2E_EXPECTED_KUBERNETES" != "unknown" ] && \
 	[ "$E2E_KIND_NODE_IMAGE" != "unknown" ]; then
 	python3 "$ROOT/scripts/summarize-e2e-baseline.py" \
 		"$ARTIFACT_DIR" "$ARTIFACT_DIR/compatibility-baseline.json"
