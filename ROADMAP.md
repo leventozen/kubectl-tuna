@@ -71,18 +71,23 @@ operators the author did not construct.
    identity, same-name Pod stale-Event identity, and multiple-ReplicaSet
    rollout-target causality are already covered. Universal same-Pod Event
    age/recency is not claimed solved by UID matching.
-4. Prepare a friction-light evaluator path without actively recruiting yet:
+4. Split validation into explicit fast, targeted, and full tiers before the
+   next local real-cluster cycle. The normal agent loop must not pull Kind
+   images or run the full E2E suite; it should select only affected scenarios.
+   Full multi-version validation belongs in remote CI or an explicit milestone
+   run, and durable baselines should be promoted from that existing evidence.
+5. Prepare a friction-light evaluator path without actively recruiting yet:
    the minimal evaluator guide, `CONTRIBUTING.md`, structured diagnostic
    feedback form, and explicit Go toolchain policy are in place; local build
    machinery and a manually dispatched artifact workflow exist, but a real
    checksum-verified and smoke-tested artifact handoff remains open.
-5. Start external operator trials after the owner-led pass and evaluator path
+6. Start external operator trials after the owner-led pass and evaluator path
    are usable. This is a sequencing delay, not a replacement for independent
    validation. Treat
    every rejected root, miss, confusing `unknown`, permission objection, and
    installation failure as product evidence; grow the trial to 3–5 operators
    and build the labeled corpus iteratively with them.
-6. Stabilize the JSON/evidence result contract only after the corpus exposes
+7. Stabilize the JSON/evidence result contract only after the corpus exposes
    which fields real consumers need. External rule packs and additional public
    graph models remain later.
 
@@ -294,6 +299,11 @@ whether the model survives Kubernetes behavior it was not authored around.
   green on `main`, including its evidence uploads; fail-closed compatibility
   becomes an adoption failure if a solo maintainer does not respond to future
   drift promptly.
+- [ ] Split validation into three deliberate tiers: fast local unit/vet/lint
+  checks without cluster or image setup; selectable single-scenario E2E for the
+  behavior being changed; and the full scenario × Kubernetes matrix only in
+  remote CI or an explicit milestone run. Baseline promotion must reuse a
+  successful full run instead of silently starting another one locally.
 - [ ] Preserve selected compatibility baselines beyond the 30-day CI artifact
   lifetime. Ephemeral workflow artifacts improve debugging but are not a
   durable validation corpus.
