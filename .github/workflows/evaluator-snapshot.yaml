@@ -10,6 +10,8 @@ jobs:
   build:
     name: Build unreleased evaluator snapshot
     runs-on: ubuntu-latest
+    outputs:
+      snapshot_id: ${{ steps.snapshot_identity.outputs.snapshot_id }}
     env:
       SNAPSHOT_ID: unreleased-${{ github.sha }}
     steps:
@@ -17,13 +19,15 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Record snapshot identity
+        id: snapshot_identity
+        run: echo "snapshot_id=${SNAPSHOT_ID}" >> "$GITHUB_OUTPUT"
       - name: Build and verify snapshot
         run: |
           bash ./scripts/build-evaluator-snapshot.sh "$SNAPSHOT_ID"
           artifact_dir="dist/evaluator-snapshot-${SNAPSHOT_ID}"
-          test "$(find "$artifact_dir" -maxdepth 1 -type f | wc -l)" -eq 7
-          test "$(wc -l < "${artifact_dir}/SHA256SUMS")" -eq 4
-          "${artifact_dir}/kubectl-tuna-${SNAPSHOT_ID}-linux-amd64" --version
+          bash ./scripts/verify-evaluator-snapshot.sh \
+            "$artifact_dir" "$SNAPSHOT_ID" linux amd64 "$GITHUB_SHA"
           for binary in "${artifact_dir}"/kubectl-tuna-*; do
             go version -m "$binary"
           done
@@ -34,3 +38,39 @@ jobs:
           path: dist/evaluator-snapshot-${{ env.SNAPSHOT_ID }}
           if-no-files-found: error
           retention-days: 14
+
+  smoke-test:
+    name: Smoke-test ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+    env:
+      SNAPSHOT_ID: ${{ needs.build.outputs.snapshot_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download unsupported snapshot
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: kubectl-tuna-evaluator-${{ env.SNAPSHOT_ID }}
+          path: evaluator-snapshot
+      - name: Verify checksum and run native binary
+        run: |
+          bash ./scripts/verify-evaluator-snapshot.sh \
+            evaluator-snapshot "$SNAPSHOT_ID" \
+            "${{ matrix.goos }}" "${{ matrix.goarch }}" "$GITHUB_SHA"

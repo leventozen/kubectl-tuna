@@ -74,7 +74,10 @@ disagrees, and:
 Maintainers can produce a fresh local snapshot with
 `make evaluator-snapshot` (optional `SNAPSHOT_ID=…`). Output lands under the
 ignored `dist/` tree and is labeled unreleased/unsupported. Producing
-binaries locally does not publish them.
+binaries locally does not publish them. The manually dispatched snapshot
+workflow downloads the same artifact set onto native Linux and macOS runners
+for both amd64 and arm64, re-verifies every checksum, and runs the matching
+binary before the artifact is considered suitable for evaluator handoff.
 
 ## Permissions
 

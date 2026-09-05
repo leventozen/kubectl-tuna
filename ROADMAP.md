@@ -122,9 +122,10 @@ parallel after soft-public:
   scheduled lifecycle, patch, and digest drift check has also passed.
 - [ ] Snapshot evaluator binaries exist for Linux and macOS on amd64 and arm64,
   with checksums and an explicit “unreleased/unsupported” label. Local
-  build path (`make evaluator-snapshot`) and a manual artifact workflow exist;
-  this checkbox stays open until a real artifact set has been produced,
-  downloaded on each target platform, checksum-verified, and smoke-tested.
+  build path (`make evaluator-snapshot`) and a manual artifact workflow exist.
+  The workflow now downloads and verifies one artifact set on native runners
+  for all four targets; this checkbox stays open until that workflow is
+  observed green with a real artifact set.
 - [x] `CONTRIBUTING.md`, evaluator guide with anonymization guidance, structured
   diagnostic feedback issue form, and an explicit Go toolchain policy grounded
   in `go.mod` exist.
