@@ -115,10 +115,11 @@ Open it as soon as these minimum safety and honesty blockers are complete:
 These are important but do not block source visibility; complete them in
 parallel after soft-public:
 
-- [ ] CI derives the latest available digest-pinned Kind patch for each non-EOL
+- [x] CI derives the latest available digest-pinned Kind patch for each non-EOL
   regular or maintenance-mode minor from a central manifest and records exact
   environment evidence. The manifest is configured for 1.34.11, 1.35.8,
-  1.36.4, and 1.37.0; this stays open until that full matrix is observed green.
+  1.36.4, and 1.37.0; the full matrix has been observed green on `main`, and the
+  scheduled lifecycle, patch, and digest drift check has also passed.
 - [ ] Snapshot evaluator binaries exist for Linux and macOS on amd64 and arm64,
   with checksums and an explicit “unreleased/unsupported” label. Local
   build path (`make evaluator-snapshot`) and a manual artifact workflow exist;
@@ -283,12 +284,13 @@ whether the model survives Kubernetes behavior it was not authored around.
 - [x] Define a repeatable patch/minor review checklist, derive CI's matrix from
   one machine-readable compatibility manifest, enforce registry parity in
   tests, and schedule upstream/image drift detection.
-- [ ] Keep the matrix on the latest available digest-pinned Kind patch of each
+- [x] Keep the matrix on the latest available digest-pinned Kind patch of each
   non-EOL regular or maintenance-mode minor. The manifest records upstream and
   tested patches separately, detects drift on a schedule, and bounds
-  network/registry checks. The current four-image advance awaits a green full
-  matrix; fail-closed compatibility becomes an adoption failure if a solo
-  maintainer does not respond to future drift promptly.
+  network/registry checks. The configured four-image matrix has been observed
+  green on `main`, including its evidence uploads; fail-closed compatibility
+  becomes an adoption failure if a solo maintainer does not respond to future
+  drift promptly.
 - [ ] Preserve selected compatibility baselines beyond the 30-day CI artifact
   lifetime. Ephemeral workflow artifacts improve debugging but are not a
   durable validation corpus.
