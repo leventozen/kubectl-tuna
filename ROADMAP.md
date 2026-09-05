@@ -129,7 +129,9 @@ parallel after soft-public:
 - [x] `CONTRIBUTING.md`, evaluator guide with anonymization guidance, structured
   diagnostic feedback issue form, and an explicit Go toolchain policy grounded
   in `go.mod` exist.
-- [ ] Repository topics and remaining general issue templates exist.
+- [x] Repository topics and focused issue forms exist for diagnostic feedback,
+  reproducible bugs, non-rule feature requests, rule proposals, and private
+  security reports; unstructured blank issues are disabled.
 - [x] Deterministic incomplete-RBAC behavior has a real-cluster reproduction;
   partial evidence must not become false absence.
 - [ ] External operator outreach is intentionally paused until the owner-led

@@ -1,0 +1,99 @@
+name: Rule proposal
+description: Propose one evidence-backed Kubernetes diagnostic rule for in-tree review.
+title: "[rule]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        External rule packs are not loaded today. Accepted diagnostics are
+        currently implemented and reviewed in-tree. Read
+        `docs/extending-rules.md` before proposing a rule; evidence quality and
+        false-positive control matter more than rule count.
+        Use only synthetic or sanitized evidence; suspected vulnerabilities
+        belong in private vulnerability reporting.
+
+  - type: input
+    id: mechanism
+    attributes:
+      label: Kubernetes failure mechanism
+      description: One narrow mechanism, not a broad symptom category.
+      placeholder: Readiness probe references a named port absent from the target container
+    validations:
+      required: true
+
+  - type: dropdown
+    id: focus-kinds
+    attributes:
+      label: Relevant inspection entry points
+      multiple: true
+      options:
+        - service
+        - deployment
+        - pod
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed-versions
+    attributes:
+      label: Observed Kubernetes versions and distributions
+      description: >-
+        State where the mechanism was observed and any known API or semantic
+        version boundary. Say "unknown" when it has not been established.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Structured evidence
+      description: >-
+        Exact API fields, status/condition relationships, owner links, or typed
+        graph edges that prove the finding. Event text alone is insufficient.
+    validations:
+      required: true
+
+  - type: textarea
+    id: causal-chain
+    attributes:
+      label: Valid causal chain
+      description: >-
+        Which existing or proposed findings may be connected, and what specific
+        directed Kubernetes relationship proves each step?
+    validations:
+      required: true
+
+  - type: textarea
+    id: non-diagnosis
+    attributes:
+      label: Plausible non-diagnosis and false-positive controls
+      description: >-
+        Describe at least one similar-looking healthy or unrelated state where
+        this rule must not fire or must not claim causality.
+    validations:
+      required: true
+
+  - type: textarea
+    id: collection-impact
+    attributes:
+      label: Collection and RBAC impact
+      description: New resource kinds, API calls, permissions, or partial-evidence behavior required.
+      placeholder: No new reads; uses existing Pod specs, or explain the exact additional read
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Rule contract
+      options:
+        - label: I read docs/extending-rules.md and searched existing rule IDs and proposals.
+          required: true
+        - label: >-
+            The proposal does not require cluster writes, Pod exec, log collection,
+            Secret payload reads, or arbitrary in-process plugins.
+          required: true
+        - label: I understand that acceptance requires positive, negative, boundary, and adversarial tests.
+          required: true
+        - label: I included no secrets, credentials, internal endpoints, or unsanitized identities.
+          required: true

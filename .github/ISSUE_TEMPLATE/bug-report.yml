@@ -1,0 +1,83 @@
+name: Bug report
+description: Report a reproducible Tuna CLI, collection, rendering, build, or documentation defect.
+title: "[bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use **Diagnostic feedback** instead when the core problem is a wrong,
+        missed, or confusing diagnosis. Suspected vulnerabilities and evidence
+        that cannot be safely sanitized belong in private vulnerability
+        reporting. Tuna is experimental and has no supported release version.
+
+  - type: input
+    id: tuna-commit
+    attributes:
+      label: Tuna commit or snapshot identity
+      description: Exact source commit, or snapshot ID plus its source_commit value.
+      placeholder: abcdef0123456789… or unreleased-abcdef012345…
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - build or local installation
+        - CLI arguments or exit codes
+        - Kubernetes collection or RBAC handling
+        - console or JSON rendering
+        - documentation or examples
+        - CI or contributor tooling
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >-
+        OS/architecture and Go version; include Kubernetes API version and
+        distribution only when relevant. Do not include endpoints or tenant names.
+      placeholder: macOS arm64, Go from go.mod; Kubernetes not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Exact commands and the smallest safe fixture or setup that reproduces the defect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include only sanitized output or error excerpts.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for this defect.
+          required: true
+        - label: >-
+            I reviewed this report and any attachments; they contain no secrets,
+            credentials, kubeconfig, internal endpoints, or unsanitized identities.
+          required: true
+        - label: This is not a suspected vulnerability or sensitive security report.
+          required: true

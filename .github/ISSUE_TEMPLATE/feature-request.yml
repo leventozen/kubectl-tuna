@@ -1,0 +1,66 @@
+name: Feature request
+description: Propose a focused product or workflow improvement that is not a new diagnostic rule.
+title: "[feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use **Rule proposal** for a new diagnostic mechanism. Tuna deliberately
+        prioritizes diagnostic precision and honest uncertainty over breadth,
+        so a concrete operator problem is more useful than a broad feature list.
+        Do not include internal cluster identities or sensitive evidence;
+        suspected vulnerabilities belong in private vulnerability reporting.
+
+  - type: textarea
+    id: operator-problem
+    attributes:
+      label: Operator problem
+      description: What concrete task is difficult today, and who encounters it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-workaround
+    attributes:
+      label: Current workflow or workaround
+      description: Commands or investigation steps used today, and where they create friction.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-outcome
+    attributes:
+      label: Smallest useful outcome
+      description: Describe observable behavior, not a preferred implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Safety and compatibility boundaries
+      description: >-
+        Note expected reads, Kubernetes-version sensitivity, offline/runtime
+        assumptions, output-contract impact, and any behavior that must remain out of scope.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Why existing kubectl commands, Tuna output, or a documentation change are insufficient.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and the roadmap for this request.
+          required: true
+        - label: This request does not require cluster writes, Pod exec, log collection, or Secret payload reads.
+          required: true
+        - label: I included no secrets, credentials, internal endpoints, or unsanitized identities.
+          required: true

@@ -61,3 +61,8 @@ description.
 - Evaluator outcomes (useful chains, wrong roots, misses, confusing output,
   source-build or snapshot friction): use the structured diagnostic feedback
   form and the guidance in [`docs/evaluator-guide.md`](docs/evaluator-guide.md).
+- Reproducible CLI, collection, rendering, build, documentation, or contributor
+  tooling defects: use the bug report form.
+- New diagnostic mechanisms: use the rule proposal form after reading
+  [`docs/extending-rules.md`](docs/extending-rules.md). General product or
+  workflow improvements belong in the feature request form.
