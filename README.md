@@ -198,6 +198,9 @@ make demo SCENARIO=hpa-metrics-unavailable
 make demo SCENARIO=statefulset-unavailable
 make demo SCENARIO=job-failed
 
+# Real metrics pipeline plus controller-authored maxReplicas cap
+make e2e E2E_CASE=hpa-scale-up-limited
+
 # Two-phase historical-failure isolation plus newest-run failure
 make e2e E2E_CASE=cronjob-latest-run
 ```
@@ -209,9 +212,15 @@ access, two Deployments deliberately selected by the same Service, a
 same-name Pod recreation that must not inherit a previous incarnation's Events,
 and a multiple-ReplicaSet rollout boundary. A Pending-PVC case verifies the
 exact PVC→Pod scheduling chain without treating normal delayed binding as a
-proven outage. An HPA case verifies that an unavailable metrics pipeline is
+proven outage. One HPA case verifies that an unavailable metrics pipeline is
 shown as a standalone capacity risk while the target Deployment remains
-healthy. A StatefulSet case verifies direct StatefulSet→Pod ownership and an
+healthy. A second installs an isolated, digest-pinned Metrics Server fixture in
+the disposable cluster and drives real CPU demand until the HPA controller
+reports `ScalingLimited=True` with reason `TooManyReplicas`; Tuna must expose
+that configured upper cap as another standalone risk. Its
+`--kubelet-insecure-tls` flag is a Kind-only test accommodation, not production
+installation guidance. A StatefulSet case verifies direct StatefulSet→Pod
+ownership and an
 image-pull→Pod NotReady→StatefulSet unavailable chain without inventing a
 Deployment-style progress deadline. A Job case verifies an exact
 OOMKilled→Pod NotReady→Job failed chain using controller-authored terminal
@@ -243,8 +252,9 @@ make e2e E2E_CASE=healthy-service
 
 `make e2e-full` is reserved for an explicit integration milestone. CI runs the
 complete scenario set across the configured Kubernetes-version matrix.
-The complete scenario set, including CronJob latest-run isolation, has been
-observed green across that matrix.
+The fifteen-scenario set through CronJob latest-run isolation has been observed
+green across that matrix. The new HPA upper-limit scenario awaits its first
+full remote observation.
 
 Additional fixture and adversarial tests cover healthy state, missing ConfigMaps,
 ambiguous SIGKILL signals, eviction, EndpointSlice semantics, API failures, and

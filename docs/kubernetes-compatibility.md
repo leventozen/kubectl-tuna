@@ -157,5 +157,8 @@ contract, including CronJob latest-run isolation, passed on the exact 1.34.11,
 1.35.8, 1.36.4, and 1.37.0 images. Minimized evidence through StatefulSet and
 Job is preserved in the durable baseline set; the newer CronJob observation is
 currently retained in CI artifacts and has not been relabeled as part of that
-older set. Diagnostics added later still require their own full remote
-observation before joining mechanical validation.
+older set. The HPA upper-limit reproduction added afterward uses the official
+[Metrics Server v0.9.0](https://github.com/kubernetes-sigs/metrics-server#compatibility-matrix)
+line, which declares Kubernetes 1.34+ compatibility, but still requires its
+first full matrix observation. Diagnostics added later likewise require their
+own full remote observation before joining mechanical validation.

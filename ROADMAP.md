@@ -44,7 +44,7 @@ product validation:
   contracts.
 - Thirteen author-constructed fixture snapshots provide fourteen inspections and one
   healthy control.
-- Fifteen author-constructed Kind scenarios provide seventeen phases when run
+- Sixteen author-constructed Kind scenarios provide eighteen phases when run
   and target six distinct root-cause patterns (one also exercises
   cross-container isolation; one also exercises same-name Pod Event identity;
   one also exercises a multiple-ReplicaSet rollout boundary; one exercises
@@ -52,10 +52,12 @@ product validation:
   isolates historical CronJob failures from the uniquely latest run), one
   strict healthy control, one recovery phase, one historical-failure isolation
   phase, one incomplete-RBAC abstention, and one cross-workload isolation
-  boundary. The complete fifteen-scenario set has been observed green across
-  the current remote matrix, including CronJob latest-run isolation.
+  boundary. One additional scenario exercises an HPA upper replica cap through
+  a real metrics pipeline and controller-authored status. The fifteen-scenario
+  set through CronJob latest-run isolation has been observed green across the
+  current remote matrix; the new HPA cap scenario awaits that observation.
   Repeating them across four Kubernetes minors validates compatibility
-  mechanics; it does not create 60 independent cases.
+  mechanics; it does not create 64 independent cases.
 - There are no sanitized field incidents and no completed external-operator
   trials yet.
 
@@ -440,8 +442,11 @@ Likely next slices:
   rule, RBAC documentation, negative contracts, synthetic corpus case, and
   metric-unavailable Kind scenario are implemented and observed green across
   the current remote Kubernetes matrix. Findings remain standalone risks
-  because neither condition proves workload outage. A deterministic live
-  upper-limit reproduction remains open.
+  because neither condition proves workload outage. A deterministic upper-limit
+  scenario now uses a digest-pinned Metrics Server and real CPU demand to obtain
+  controller-authored `ScalingLimited=True/TooManyReplicas` status without
+  patching the HPA. Keep this item open until that scenario is observed green
+  across the current remote matrix.
 - [x] StatefulSet ownership and availability, designed independently from
   Deployment assumptions. The focus collector, direct `owns` causal path,
   fail-closed controller freshness, `statefulset-unavailable` rule, negative

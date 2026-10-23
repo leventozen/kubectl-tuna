@@ -1,0 +1,53 @@
+# The worker deliberately consumes more CPU than its request while maxReplicas
+# is fixed at one. A real HPA controller must calculate a larger recommendation,
+# normalize it to one, and report ScalingLimited=True/TooManyReplicas.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tuna-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: capped-worker
+  namespace: tuna-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: capped-worker
+  template:
+    metadata:
+      labels:
+        app: capped-worker
+    spec:
+      containers:
+        - name: worker
+          image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+          command: ["/bin/sh", "-c"]
+          args: ["while :; do :; done"]
+          resources:
+            requests:
+              cpu: 10m
+            limits:
+              cpu: 100m
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: capped-worker
+  namespace: tuna-demo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: capped-worker
+  minReplicas: 1
+  maxReplicas: 1
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 1

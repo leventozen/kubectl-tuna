@@ -34,6 +34,7 @@ ALL_E2E_CASES=(
 	service-selector-mismatch
 	failed-scheduling
 	hpa-metrics-unavailable
+	hpa-scale-up-limited
 	pending-pvc
 	statefulset-unavailable
 	job-failed
@@ -407,6 +408,38 @@ raise SystemExit(0 if ok else 1)
 '
 }
 
+matches_hpa_scale_up_limited_contract() {
+	python3 -c '
+import json, sys
+res = json.load(sys.stdin)
+findings = res.get("findings", [])
+finding = findings[0] if len(findings) == 1 else {}
+evidence = {
+    item.get("source"): item.get("value", "")
+    for item in finding.get("evidence", [])
+}
+ok = (
+    res.get("health") == "healthy"
+    and res.get("partial") is False
+    and res.get("warnings", []) == []
+    and res.get("rootCauses") == []
+    and finding.get("type") == "hpa-scale-up-limited"
+    and finding.get("impact") == "risk"
+    and finding.get("confidence") == "high"
+    and finding.get("resource", {}).get("kind") == "HorizontalPodAutoscaler"
+    and finding.get("resource", {}).get("name") == "capped-worker"
+    and finding.get("rootCause") is False
+    and finding.get("causes", []) == []
+    and finding.get("causedBy", []) == []
+    and "status=True" in evidence.get("HorizontalPodAutoscaler.status.conditions[ScalingLimited]", "")
+    and "reason=TooManyReplicas" in evidence.get("HorizontalPodAutoscaler.status.conditions[ScalingLimited]", "")
+    and "desiredReplicas=1" in evidence.get("HorizontalPodAutoscaler.status", "")
+    and "maxReplicas=1" in evidence.get("HorizontalPodAutoscaler.status", "")
+)
+raise SystemExit(0 if ok else 1)
+'
+}
+
 matches_statefulset_unavailable_contract() {
 	python3 -c '
 import json, sys
@@ -767,6 +800,76 @@ check_hpa_metrics_unavailable() {
 		fail=1
 	fi
 	kubectl delete namespace tuna-demo --wait >/dev/null
+}
+
+cleanup_hpa_scale_up_limited() {
+	kubectl delete namespace tuna-demo --ignore-not-found --wait >/dev/null 2>&1 || true
+	kubectl delete -f "$DIR/hpa-scale-up-limited/metrics-server.yaml" \
+		--ignore-not-found --wait=true >/dev/null 2>&1 || true
+}
+
+check_hpa_scale_up_limited() {
+	local scenario="hpa-scale-up-limited" deadline_s=240
+	echo "=== scenario: $scenario (controller-authored upper replica cap, deadline: ${deadline_s}s) ==="
+
+	if kubectl get apiservice v1beta1.metrics.k8s.io >/dev/null 2>&1; then
+		echo "FAIL: $scenario requires a disposable cluster without an existing metrics.k8s.io APIService"
+		fail=1
+		return
+	fi
+	if ! kubectl apply -f "$DIR/$scenario/metrics-server.yaml" >/dev/null; then
+		echo "FAIL: could not install the isolated metrics-server fixture"
+		fail=1
+		cleanup_hpa_scale_up_limited
+		return
+	fi
+	if ! kubectl rollout status deployment/tuna-e2e-metrics-server -n kube-system --timeout=180s >/dev/null; then
+		echo "FAIL: metrics-server fixture did not become ready"
+		kubectl get pods -n kube-system -l k8s-app=tuna-e2e-metrics-server -o wide 2>/dev/null || true
+		kubectl logs -n kube-system deployment/tuna-e2e-metrics-server 2>/dev/null || true
+		fail=1
+		cleanup_hpa_scale_up_limited
+		return
+	fi
+	if ! kubectl wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=120s >/dev/null; then
+		echo "FAIL: metrics.k8s.io APIService did not become available"
+		kubectl get apiservice v1beta1.metrics.k8s.io -o yaml 2>/dev/null || true
+		fail=1
+		cleanup_hpa_scale_up_limited
+		return
+	fi
+	if ! kubectl apply -f "$DIR/$scenario/manifests.yaml" >/dev/null; then
+		echo "FAIL: could not create the HPA upper-limit workload"
+		fail=1
+		cleanup_hpa_scale_up_limited
+		return
+	fi
+
+	local start=$SECONDS out="" status=1 result="FAIL"
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		set +e
+		out="$("$TUNA_BIN" inspect deployment capped-worker -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 0 ] && echo "$out" | matches_hpa_scale_up_limited_contract; then
+			result="PASS"
+			break
+		fi
+	done
+
+	write_case_result "$scenario" "$out"
+	if [ "$result" = "PASS" ]; then
+		echo "PASS: a real HPA controller exposed maxReplicas as a standalone risk ($((SECONDS - start))s)"
+	else
+		echo "FAIL: HPA scale-up-limit contract was not met within ${deadline_s}s (exit: $status)"
+		[ -n "$out" ] && echo "$out"
+		kubectl get hpa capped-worker -n tuna-demo -o yaml 2>/dev/null || true
+		kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/tuna-demo/pods 2>/dev/null || true
+		kubectl get deployment capped-worker -n tuna-demo -o yaml 2>/dev/null || true
+		fail=1
+	fi
+	cleanup_hpa_scale_up_limited
 }
 
 check_statefulset_unavailable() {
@@ -1499,6 +1602,9 @@ run_selected_case() {
 		;;
 	hpa-metrics-unavailable)
 		check_hpa_metrics_unavailable
+		;;
+	hpa-scale-up-limited)
+		check_hpa_scale_up_limited
 		;;
 	pending-pvc)
 		check pending-pvc deployment storage-api 120 persistent-volume-claim-pending
