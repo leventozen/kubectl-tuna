@@ -6,7 +6,7 @@ Kubernetes mechanism and the required resource relationship both exist.
 
 ```mermaid
 flowchart LR
-    CLI["inspect Service / Deployment / StatefulSet / Pod"] --> C["focused collector"]
+    CLI["inspect Service / Deployment / StatefulSet / Job / Pod"] --> C["focused collector"]
     C --> T["temporal-integrity check"]
     T --> G["directed resource graph"]
     T --> U["collection issues / unknown evidence"]
@@ -21,7 +21,7 @@ flowchart LR
 
 ### 1. Start from one focus resource
 
-The command always has a focus: the Service, Deployment, StatefulSet, or Pod
+The command always has a focus: the Service, Deployment, StatefulSet, Job, or Pod
 named by the user. Collection expands only far enough to evaluate relationships
 relevant to that focus.
 
@@ -30,6 +30,7 @@ relevant to that focus.
 | Service | selected Pods, their owner chains and Nodes, the Service's EndpointSlices, ConfigMap/Secret/PVC references, related Deployment HPAs, related events |
 | Deployment | owned ReplicaSets and Pods, Services selecting those Pods, their EndpointSlices, Nodes, configuration and PVC references, exact-target HPAs, related events |
 | StatefulSet | directly owned Pods, Services selecting those Pods, their EndpointSlices, Nodes, configuration and PVC references, related events |
+| Job | exact CronJob owner when present, directly owned Pods, Nodes, configuration and PVC references, related events |
 | Pod | owner chain, scheduled Node, Services selecting the Pod, their EndpointSlices, configuration and PVC references, related Deployment HPAs, related events |
 
 “Focused” describes the retained graph, not a promise that every Kubernetes
@@ -109,6 +110,7 @@ Service    --selects------> Pod
 Service    --routes-to----> EndpointSlice
 Deployment --owns---------> ReplicaSet --owns---------> Pod
 StatefulSet --owns--------> Pod
+CronJob     --owns--------> Job --owns--------> Pod
 Pod        --references---> ConfigMap / Secret reference
 Pod        --claims-storage-> PersistentVolumeClaim
 Pod        --scheduled-on-> Node
@@ -180,6 +182,9 @@ pod-not-ready
   -- StatefulSet directly owns that Pod --> statefulset-unavailable
 
 pod-not-ready
+  -- exact failed Job Pod exhausted an explicit zero retry budget --> job-failed
+
+pod-not-ready
   -- Deployment owns that Pod through the current-template ReplicaSet --> rollout-stuck
 
 node-pressure
@@ -201,6 +206,14 @@ It reports a factual `availableReplicas < spec.replicas` shortfall but does not
 invent `rollout-stuck`: StatefulSet has no Deployment-style progress deadline,
 and revision differences can represent a normal RollingUpdate, partitioned
 rollout, or OnDelete strategy.
+
+`job-failed` accepts only the controller-authored `Failed=True` terminal
+condition or `FailureTarget=True` while cleanup is still in progress. Failed
+Pod counters and elapsed time do not establish the finding. A Pod-level cause
+is linked only when the controller reports `BackoffLimitExceeded`, the Job has
+an explicit `backoffLimit: 0`, and the exact owned Pod reached `Failed` phase.
+Same labels, an ordinary NotReady Pod, or a recreated same-name Job are
+insufficient.
 
 There is no generic “these objects are within four graph hops, therefore one
 caused the other” fallback. If the exact predicate cannot be proven, both

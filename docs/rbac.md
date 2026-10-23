@@ -15,7 +15,7 @@ is checked against each rule's reviewed compatibility range. If version
 discovery fails, version-scoped rules are skipped and health is `unknown`
 unless other collected evidence already proves a current focus problem.
 
-The focus Service, Deployment, StatefulSet, or Pod is fetched at both the
+The focus Service, Deployment, StatefulSet, Job, or Pod is fetched at both the
 beginning and end of collection using the same `get` permission. The second
 read verifies its UID, `resourceVersion`, and `generation`. If the read fails
 or the revision changed, rule evaluation is suspended because the related
@@ -37,6 +37,8 @@ is documented in [`temporal-integrity.md`](temporal-integrity.md).
 | apps | `deployments` | `get` | fetch a Deployment focus or resolve a Pod owner |
 | apps | `replicasets` | `get`, `list` | resolve Deployment→ReplicaSet→Pod ownership |
 | apps | `statefulsets` | `get` | fetch a StatefulSet focus or resolve direct StatefulSet→Pod ownership |
+| batch | `jobs` | `get` | fetch a Job focus or resolve direct Job→Pod ownership |
+| batch | `cronjobs` | `get` | resolve an exact CronJob→Job owner relationship |
 | autoscaling | `horizontalpodautoscalers` | `list` | discover HPAs whose exact scale target is a collected Deployment |
 | discovery.k8s.io | `endpointslices` | `list` | inspect endpoint readiness for a Service |
 | core, cluster-scoped | `nodes` | `get` | inspect pressure conditions and establish the kubelet version for the exact Node hosting a collected Pod |
@@ -50,23 +52,25 @@ in its findings.
 
 ### Operations by entry point
 
-The aggregated Role below is convenient when all four inspect commands are
+The aggregated Role below is convenient when all five inspect commands are
 allowed. A narrower grant can follow this table (`—` means no current call):
 
-| Resource / endpoint | Service focus | Deployment focus | StatefulSet focus | Pod focus |
-|---|---|---|---|---|
-| non-resource `/version` | `get` | `get` | `get` | `get` |
-| `services` | `get` | `list` | `list` | `list` |
-| `pods` | `list` | `list` | `list` | `get` |
-| `configmaps` | `get` | `get` | `get` | `get` |
-| `persistentvolumeclaims` | `get` | `get` | `get` | `get` |
-| `events` | `list` | `list` | `list` | `list` |
-| `deployments` | conditional `get` | `get` | — | conditional `get` |
-| `replicasets` | conditional `get` | `list` | — | conditional `get` |
-| `statefulsets` | conditional `get` | — | `get` | conditional `get` |
-| `horizontalpodautoscalers.autoscaling` | conditional `list` | `list` | — | conditional `list` |
-| `endpointslices.discovery.k8s.io` | `list` | `list` | `list` | `list` |
-| cluster-scoped `nodes` | optional `get` | optional `get` | optional `get` | optional `get` |
+| Resource / endpoint | Service focus | Deployment focus | StatefulSet focus | Job focus | Pod focus |
+|---|---|---|---|---|---|
+| non-resource `/version` | `get` | `get` | `get` | `get` | `get` |
+| `services` | `get` | `list` | `list` | — | `list` |
+| `pods` | `list` | `list` | `list` | `list` | `get` |
+| `configmaps` | `get` | `get` | `get` | `get` | `get` |
+| `persistentvolumeclaims` | `get` | `get` | `get` | `get` | `get` |
+| `events` | `list` | `list` | `list` | `list` | `list` |
+| `deployments` | conditional `get` | `get` | — | — | conditional `get` |
+| `replicasets` | conditional `get` | `list` | — | — | conditional `get` |
+| `statefulsets` | conditional `get` | — | `get` | — | conditional `get` |
+| `jobs.batch` | conditional `get` | — | — | `get` | conditional `get` |
+| `cronjobs.batch` | conditional `get` | — | — | conditional `get` | conditional `get` |
+| `horizontalpodautoscalers.autoscaling` | conditional `list` | `list` | — | — | conditional `list` |
+| `endpointslices.discovery.k8s.io` | `list` | `list` | `list` | — | `list` |
+| cluster-scoped `nodes` | optional `get` | optional `get` | optional `get` | optional `get` | optional `get` |
 
 Service discovery for Deployment, StatefulSet, and Pod focus remains a
 namespace list because Kubernetes has no reverse query over
@@ -120,6 +124,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["replicasets"]
     verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get"]
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
     verbs: ["list"]
@@ -188,8 +195,8 @@ than ideal:
 - HorizontalPodAutoscalers are listed across the namespace when the retained
   graph contains a Deployment, then filtered by exact `scaleTargetRef`.
 
-Deployment-owned ReplicaSets and Pods, StatefulSet-owned Pods, and Service
-EndpointSlices already use label selectors. Pod Events use exact
+Deployment-owned ReplicaSets and Pods, StatefulSet-owned Pods, Job-owned Pods,
+and Service EndpointSlices already use label selectors. Pod Events use exact
 involved-object field selectors and are requested only for related Pods that
 are not Ready. Future work should measure the cost of the remaining broad read
 and narrow it where the Kubernetes API supports a reliable query.
@@ -214,9 +221,9 @@ and narrow it where the Kubernetes API supports a reliable query.
   the API server or outside the rule's reviewed range.
 - EndpointSlice failure for a Service focus makes health `unknown` because
   endpoint health cannot be established.
-- Failure to discover or enrich related Pods, ReplicaSets, StatefulSets, Services,
-  HorizontalPodAutoscalers, Nodes, ConfigMaps, PersistentVolumeClaims, or Events
-  is emitted as partial evidence.
+- Failure to discover or enrich related Pods, ReplicaSets, StatefulSets, Jobs,
+  CronJobs, Services, HorizontalPodAutoscalers, Nodes, ConfigMaps,
+  PersistentVolumeClaims, or Events is emitted as partial evidence.
   A rule must not treat that failure as object absence.
 - A definitive ConfigMap `NotFound` response is evidence of a missing
   reference; a timeout or `Forbidden` response is not.

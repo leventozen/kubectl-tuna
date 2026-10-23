@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backup
+  namespace: batch
+  uid: job-backup-uid
+  resourceVersion: "20"
+  generation: 1
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: backup
+          image: busybox:1.36
+          resources:
+            requests:
+              memory: 8Mi
+            limits:
+              memory: 16Mi
+status:
+  failed: 1
+  conditions:
+    - type: FailureTarget
+      status: "True"
+      reason: BackoffLimitExceeded
+      message: Job has reached the specified backoff limit

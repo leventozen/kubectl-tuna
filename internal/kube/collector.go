@@ -13,6 +13,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -222,6 +223,48 @@ func (c *Collector) CollectStatefulSet(ctx context.Context, namespace, name stri
 	return g, nil
 }
 
+// CollectJob builds a graph around a Job: its exact CronJob owner when one
+// exists, directly owned Pods, referenced configuration and storage, Nodes,
+// and related Events. Job status conditions remain the authority for whether
+// the run has failed; Pod counters alone are not interpreted as terminal.
+func (c *Collector) CollectJob(ctx context.Context, namespace, name string) (*graph.Graph, error) {
+	startedAt := time.Now()
+	job, err := c.client.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get job %s/%s: %w", namespace, name, err)
+	}
+	jobRef := graph.ResourceRef{Kind: "Job", Namespace: namespace, Name: name}
+	g := graph.New(jobRef)
+	g.BeginCollection(startedAt, job)
+	c.addJob(ctx, g, job)
+	c.collectClusterInfo(ctx, g)
+
+	podList, err := c.client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labels.Set{batchv1.ControllerUidLabel: string(job.UID)}.AsSelector().String(),
+	})
+	if err != nil {
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourcePod, Resource: jobRef,
+			Message: fmt.Sprintf("could not list Job Pods: %v", err),
+		})
+	} else {
+		for i := range podList.Items {
+			pod := &podList.Items[i]
+			if !isControllerOwner(pod.OwnerReferences, batchv1.SchemeGroupVersion.String(), "Job", job.UID) {
+				continue
+			}
+			podRef := c.addPod(ctx, g, pod)
+			g.AddEdge(jobRef, podRef, graph.EdgeOwns)
+		}
+	}
+
+	c.collectEvents(ctx, g, namespace)
+	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
+		return c.client.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
+	})
+	return g, nil
+}
+
 // collectServicesSelectingPods performs the unavoidable namespace-wide reverse
 // Service selector discovery for a workload's exact owned Pods, then retains
 // EndpointSlices only for matching Services.
@@ -285,8 +328,9 @@ func (c *Collector) collectServicesSelectingPods(
 	}
 }
 
-// addPod adds a Pod, its owner chain (ReplicaSet → Deployment or StatefulSet),
-// and its ConfigMap/Secret/PersistentVolumeClaim references to the graph.
+// addPod adds a Pod, its owner chain (ReplicaSet → Deployment, StatefulSet,
+// or Job → CronJob), and its ConfigMap/Secret/PersistentVolumeClaim references
+// to the graph.
 // Secret payloads are never read.
 func (c *Collector) addPod(ctx context.Context, g *graph.Graph, pod *corev1.Pod) graph.ResourceRef {
 	podRef := graph.ResourceRef{Kind: "Pod", Namespace: pod.Namespace, Name: pod.Name}
@@ -294,6 +338,40 @@ func (c *Collector) addPod(ctx context.Context, g *graph.Graph, pod *corev1.Pod)
 
 	// Owner chain.
 	for _, or := range pod.OwnerReferences {
+		if or.APIVersion == batchv1.SchemeGroupVersion.String() &&
+			or.Kind == "Job" && or.Controller != nil && *or.Controller {
+			jobRef := graph.ResourceRef{Kind: "Job", Namespace: pod.Namespace, Name: or.Name}
+			var job *batchv1.Job
+			if existing, exists := g.Node(jobRef); exists {
+				job, _ = existing.Object.(*batchv1.Job)
+				if job != nil && job.UID != or.UID {
+					job = nil
+				}
+			} else {
+				observed, err := c.client.BatchV1().Jobs(pod.Namespace).Get(ctx, or.Name, metav1.GetOptions{})
+				if err != nil {
+					g.AddUnknownNode(jobRef)
+					g.AddCollectionIssue(graph.CollectionIssue{
+						Source: graph.SourceJob, Resource: jobRef,
+						Message: fmt.Sprintf("could not get owner Job: %v", err),
+					})
+				} else if observed.UID != or.UID {
+					g.AddUnknownNode(jobRef)
+					g.AddCollectionIssue(graph.CollectionIssue{
+						Source: graph.SourceJob, Resource: jobRef,
+						Message: fmt.Sprintf("owner Job UID %q did not match Pod ownerReference UID %q", observed.UID, or.UID),
+					})
+				} else {
+					job = observed
+				}
+			}
+			if job == nil {
+				continue
+			}
+			c.addJob(ctx, g, job)
+			g.AddEdge(jobRef, podRef, graph.EdgeOwns)
+			continue
+		}
 		if or.APIVersion == appsv1.SchemeGroupVersion.String() &&
 			or.Kind == "StatefulSet" && or.Controller != nil && *or.Controller {
 			stsRef := graph.ResourceRef{Kind: "StatefulSet", Namespace: pod.Namespace, Name: or.Name}
@@ -387,6 +465,47 @@ func (c *Collector) addPod(ctx context.Context, g *graph.Graph, pod *corev1.Pod)
 		g.AddEdge(podRef, nodeRef, graph.EdgeScheduledOn)
 	}
 	return podRef
+}
+
+// addJob adds a known Job and resolves an exact CronJob controller owner. A
+// same-name recreated CronJob is not accepted as the owner without UID parity.
+func (c *Collector) addJob(ctx context.Context, g *graph.Graph, job *batchv1.Job) graph.ResourceRef {
+	jobRef := graph.ResourceRef{Kind: "Job", Namespace: job.Namespace, Name: job.Name}
+	g.AddNode(jobRef, job)
+	for _, owner := range job.OwnerReferences {
+		if owner.APIVersion != batchv1.SchemeGroupVersion.String() || owner.Kind != "CronJob" ||
+			owner.Controller == nil || !*owner.Controller {
+			continue
+		}
+		cronJobRef := graph.ResourceRef{Kind: "CronJob", Namespace: job.Namespace, Name: owner.Name}
+		ownerMatches := false
+		if existing, exists := g.Node(cronJobRef); exists {
+			cronJob, ok := existing.Object.(*batchv1.CronJob)
+			ownerMatches = ok && cronJob.UID == owner.UID
+		} else {
+			cronJob, err := c.client.BatchV1().CronJobs(job.Namespace).Get(ctx, owner.Name, metav1.GetOptions{})
+			if err != nil {
+				g.AddUnknownNode(cronJobRef)
+				g.AddCollectionIssue(graph.CollectionIssue{
+					Source: graph.SourceCronJob, Resource: cronJobRef,
+					Message: fmt.Sprintf("could not get owner CronJob: %v", err),
+				})
+			} else if cronJob.UID != owner.UID {
+				g.AddUnknownNode(cronJobRef)
+				g.AddCollectionIssue(graph.CollectionIssue{
+					Source: graph.SourceCronJob, Resource: cronJobRef,
+					Message: fmt.Sprintf("owner CronJob UID %q did not match Job ownerReference UID %q", cronJob.UID, owner.UID),
+				})
+			} else {
+				g.AddNode(cronJobRef, cronJob)
+				ownerMatches = true
+			}
+		}
+		if ownerMatches {
+			g.AddEdge(cronJobRef, jobRef, graph.EdgeOwns)
+		}
+	}
+	return jobRef
 }
 
 // CollectPod builds a graph around a single Pod: its owner chain, the Node

@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/leventozen/kubectl-tuna/internal/graph"
@@ -35,6 +36,7 @@ var causalRules = []causalRule{
 	{PodNotReady, ServiceNoReadyEndpoints, selectedByService},
 	{PodNotReady, DeploymentUnavailable, ownedByDeployment},
 	{PodNotReady, StatefulSetUnavailable, ownedByStatefulSet},
+	{PodNotReady, JobFailed, failedPodExhaustedJobRetryBudget},
 	{PodNotReady, RolloutStuck, ownedByDeploymentRolloutTarget},
 	{ServiceSelectorNoPods, ServiceNoReadyEndpoints, sameResource},
 	{NodePressure, PodEvicted, scheduledOnNode},
@@ -117,6 +119,38 @@ func ownedByDeployment(cause, effect *Finding, g *graph.Graph) bool {
 
 func ownedByStatefulSet(cause, effect *Finding, g *graph.Graph) bool {
 	return g.HasEdge(effect.Resource, cause.Resource, graph.EdgeOwns)
+}
+
+// failedPodExhaustedJobRetryBudget is deliberately narrower than ownership.
+// A Job may tolerate failed or NotReady Pods, run multiple Pods in parallel,
+// or use per-index retry policy. The direct causal link is safe only when the
+// controller says the global backoff limit was exceeded, that limit is
+// explicitly zero, and this exact owned Pod has reached Failed phase.
+func failedPodExhaustedJobRetryBudget(cause, effect *Finding, g *graph.Graph) bool {
+	if !g.HasEdge(effect.Resource, cause.Resource, graph.EdgeOwns) {
+		return false
+	}
+	jobNode, ok := g.Node(effect.Resource)
+	if !ok {
+		return false
+	}
+	job, ok := jobNode.Object.(*batchv1.Job)
+	if !ok || job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 0 {
+		return false
+	}
+	condition := trueJobCondition(job, batchv1.JobFailed)
+	if condition == nil {
+		condition = trueJobCondition(job, batchv1.JobFailureTarget)
+	}
+	if condition == nil || condition.Reason != "BackoffLimitExceeded" {
+		return false
+	}
+	podNode, ok := g.Node(cause.Resource)
+	if !ok {
+		return false
+	}
+	pod, ok := podNode.Object.(*corev1.Pod)
+	return ok && pod.Status.Phase == corev1.PodFailed
 }
 
 // ownedByDeploymentRolloutTarget links Pod NotReady to rollout-stuck only when

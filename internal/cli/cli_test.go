@@ -51,3 +51,10 @@ func TestRootCommandExposesStatefulSetInspection(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "statefulset", command.Name())
 }
+
+func TestRootCommandExposesJobInspection(t *testing.T) {
+	root := NewRootCommand("dev")
+	command, _, err := root.Find([]string{"inspect", "job"})
+	require.NoError(t, err)
+	require.Equal(t, "job", command.Name())
+}

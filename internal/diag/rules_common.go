@@ -56,6 +56,7 @@ func DefaultRuleRegistrations() []RuleRegistration {
 		builtInKubeletRule(oomKilledRule{}, RuleFamilyWorkload, "classify confirmed OOMKilled and ambiguous SIGKILL termination state", ContainerOOMKilled, ContainerSIGKILL),
 		builtInRule(deploymentUnavailableRule{}, RuleFamilyWorkload, "report a Deployment below its desired availability", DeploymentUnavailable),
 		builtInRule(statefulSetUnavailableRule{}, RuleFamilyWorkload, "report a StatefulSet below its desired availability without inferring rollout failure", StatefulSetUnavailable),
+		builtInRule(jobFailedRule{}, RuleFamilyWorkload, "report a Job whose controller has established failure or a failure target", JobFailed),
 		builtInRule(rolloutStuckRule{}, RuleFamilyRollout, "report Deployment ProgressDeadlineExceeded state", RolloutStuck),
 		// Scheduling and resources
 		builtInRule(podUnschedulableRule{}, RuleFamilyScheduling, "classify a PodScheduled false condition and supporting scheduling events", PodUnschedulable),

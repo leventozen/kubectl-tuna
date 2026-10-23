@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backup-k8r2m
+  namespace: batch
+  uid: pod-backup-uid
+  labels:
+    batch.kubernetes.io/controller-uid: job-backup-uid
+    batch.kubernetes.io/job-name: backup
+  ownerReferences:
+    - apiVersion: batch/v1
+      kind: Job
+      name: backup
+      uid: job-backup-uid
+      controller: true
+      blockOwnerDeletion: true
+spec:
+  restartPolicy: Never
+  containers:
+    - name: backup
+      image: busybox:1.36
+      resources:
+        requests:
+          memory: 8Mi
+        limits:
+          memory: 16Mi
+status:
+  phase: Failed
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: ContainersNotReady
+      message: 'containers with unready status: [backup]'
+  containerStatuses:
+    - name: backup
+      image: busybox:1.36
+      ready: false
+      restartCount: 0
+      state:
+        terminated:
+          exitCode: 137
+          reason: OOMKilled

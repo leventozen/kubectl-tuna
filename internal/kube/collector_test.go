@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -291,6 +292,102 @@ func TestStatefulSetPodListFailureKeepsStatusDiagnosisAvailable(t *testing.T) {
 	require.True(t, res.Partial)
 	require.True(t, hasWarningSource(res, graph.SourcePod))
 	require.True(t, hasFindingType(res, diag.StatefulSetUnavailable))
+}
+
+func TestJobCollectorRetainsOnlyExactOwnedPodsAndCronJob(t *testing.T) {
+	cronJob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "ns", UID: "cronjob-uid"},
+	}
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "backup-123", Namespace: "ns", UID: "job-uid", ResourceVersion: "10",
+			OwnerReferences: []metav1.OwnerReference{cronJobOwnerRef("backup", "cronjob-uid")},
+		},
+	}
+	owned := readyPod("backup-123-a")
+	owned.Labels = map[string]string{batchv1.ControllerUidLabel: "job-uid"}
+	owned.OwnerReferences = []metav1.OwnerReference{jobOwnerRef("backup-123", "job-uid")}
+	wrongUID := readyPod("backup-123-old")
+	wrongUID.Labels = map[string]string{batchv1.ControllerUidLabel: "job-uid"}
+	wrongUID.OwnerReferences = []metav1.OwnerReference{jobOwnerRef("backup-123", "old-job-uid")}
+	nonController := readyPod("backup-123-helper")
+	nonController.Labels = map[string]string{batchv1.ControllerUidLabel: "job-uid"}
+	nonController.OwnerReferences = []metav1.OwnerReference{{
+		APIVersion: batchv1.SchemeGroupVersion.String(), Kind: "Job", Name: "backup-123", UID: "job-uid",
+	}}
+	client := fakeClient(cronJob, job, owned, wrongUID, nonController)
+
+	g, err := kube.NewCollector(client).CollectJob(context.Background(), "ns", "backup-123")
+	require.NoError(t, err)
+	cronJobRef := graph.ResourceRef{Kind: "CronJob", Namespace: "ns", Name: "backup"}
+	jobRef := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup-123"}
+	ownedRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "backup-123-a"}
+	require.True(t, g.HasEdge(cronJobRef, jobRef, graph.EdgeOwns))
+	require.True(t, g.HasEdge(jobRef, ownedRef, graph.EdgeOwns))
+	_, exists := g.Node(graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "backup-123-old"})
+	require.False(t, exists, "matching labels do not prove Job ownership")
+	_, exists = g.Node(graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "backup-123-helper"})
+	require.False(t, exists, "a non-controller ownerReference does not prove Job ownership")
+}
+
+func TestPodCollectorRejectsRecreatedSameNameJobOwner(t *testing.T) {
+	pod := readyPod("backup-123-a")
+	pod.UID = "pod-uid"
+	pod.OwnerReferences = []metav1.OwnerReference{jobOwnerRef("backup-123", "old-job-uid")}
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "backup-123", Namespace: "ns", UID: "new-job-uid"},
+	}
+	client := fakeClient(pod, job)
+
+	g, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", pod.Name)
+	require.NoError(t, err)
+	jobRef := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup-123"}
+	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: pod.Name}
+	require.False(t, g.HasEdge(jobRef, podRef, graph.EdgeOwns))
+	res := diag.NewEngine().Evaluate(g)
+	require.True(t, hasWarningSource(res, graph.SourceJob))
+}
+
+func TestJobCollectorRejectsRecreatedSameNameCronJobOwner(t *testing.T) {
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "backup-123", Namespace: "ns", UID: "job-uid", ResourceVersion: "10",
+			OwnerReferences: []metav1.OwnerReference{cronJobOwnerRef("backup", "old-cronjob-uid")},
+		},
+	}
+	cronJob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "ns", UID: "new-cronjob-uid"},
+	}
+	client := fakeClient(job, cronJob)
+
+	g, err := kube.NewCollector(client).CollectJob(context.Background(), "ns", job.Name)
+	require.NoError(t, err)
+	cronJobRef := graph.ResourceRef{Kind: "CronJob", Namespace: "ns", Name: "backup"}
+	jobRef := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: job.Name}
+	require.False(t, g.HasEdge(cronJobRef, jobRef, graph.EdgeOwns))
+	res := diag.NewEngine().Evaluate(g)
+	require.True(t, hasWarningSource(res, graph.SourceCronJob))
+}
+
+func TestJobPodListFailureKeepsConditionDiagnosisAvailable(t *testing.T) {
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "ns", UID: "job-uid", ResourceVersion: "10"},
+		Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{{
+			Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "BackoffLimitExceeded",
+		}}},
+	}
+	client := fakeClient(job)
+	client.PrependReactor("list", "pods", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("forbidden")
+	})
+
+	g, err := kube.NewCollector(client).CollectJob(context.Background(), "ns", "backup")
+	require.NoError(t, err)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthDegraded, res.Health)
+	require.True(t, res.Partial)
+	require.True(t, hasWarningSource(res, graph.SourcePod))
+	require.True(t, hasFindingType(res, diag.JobFailed))
 }
 
 func TestStaleRelatedDeploymentSuspendsServiceDiagnosis(t *testing.T) {
@@ -949,5 +1046,21 @@ func statefulSetOwnerRef(name string, uid types.UID) metav1.OwnerReference {
 		Name:       name,
 		UID:        uid,
 		Controller: &controller,
+	}
+}
+
+func jobOwnerRef(name string, uid types.UID) metav1.OwnerReference {
+	controller := true
+	return metav1.OwnerReference{
+		APIVersion: batchv1.SchemeGroupVersion.String(), Kind: "Job",
+		Name: name, UID: uid, Controller: &controller,
+	}
+}
+
+func cronJobOwnerRef(name string, uid types.UID) metav1.OwnerReference {
+	controller := true
+	return metav1.OwnerReference{
+		APIVersion: batchv1.SchemeGroupVersion.String(), Kind: "CronJob",
+		Name: name, UID: uid, Controller: &controller,
 	}
 }

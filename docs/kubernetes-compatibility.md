@@ -80,8 +80,15 @@ silently shrink, expand, or mislabel the reviewed window.
 
 The 1.37 window advance reviewed the stable API surfaces Tuna actually reads:
 core/v1 Pods, Services, Nodes, ConfigMaps, and Events; apps/v1 Deployments,
-ReplicaSets, and StatefulSets; and discovery.k8s.io/v1 EndpointSlices. Tuna
-does not consume an alpha or beta Kubernetes API.
+ReplicaSets, and StatefulSets; batch/v1 Jobs and CronJobs; and
+discovery.k8s.io/v1 EndpointSlices. Tuna does not consume an alpha or beta
+Kubernetes API.
+
+Job failure diagnosis uses the stable `Failed` and `FailureTarget` conditions.
+The latter distinguishes failure criteria being met from final cleanup: Tuna
+reports the failure decision while stating that the Job is not terminal until
+`Failed=True`. It does not infer failure from Pod counters, retry settings, or
+elapsed wall-clock time.
 
 StatefulSet diagnosis in this window is deliberately limited to stable status
 and ownership fields: `observedGeneration`, replica counts,

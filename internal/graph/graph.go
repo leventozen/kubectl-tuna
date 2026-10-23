@@ -32,7 +32,7 @@ func (r ResourceRef) String() string {
 type EdgeType string
 
 const (
-	EdgeOwns          EdgeType = "owns"           // Workload controller ownership, e.g. Deployment→ReplicaSet→Pod or StatefulSet→Pod
+	EdgeOwns          EdgeType = "owns"           // Controller ownership, e.g. Deployment→ReplicaSet→Pod, StatefulSet→Pod, or CronJob→Job→Pod
 	EdgeSelects       EdgeType = "selects"        // Service selects Pod
 	EdgeRoutesTo      EdgeType = "routes-to"      // Service routes to EndpointSlice
 	EdgeReferences    EdgeType = "references"     // Pod references ConfigMap/Secret
@@ -84,6 +84,8 @@ const (
 	SourceReplicaSet              = "replicaset"
 	SourceDeployment              = "deployment"
 	SourceStatefulSet             = "statefulset"
+	SourceJob                     = "job"
+	SourceCronJob                 = "cronjob"
 	SourceNode                    = "node"
 	SourceConfigMap               = "configmap"
 	SourcePersistentVolumeClaim   = "persistentvolumeclaim"

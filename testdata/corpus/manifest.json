@@ -104,6 +104,20 @@
       ]
     },
     {
+      "id": "fixture-job-failed",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "job-failed",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["job", "workload", "causal-chain"],
+      "limitations": ["author-constructed", "fake-client", "controller-status-synthetic"],
+      "inspections": [
+        {
+          "focus": {"kind": "job", "namespace": "batch", "name": "backup"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["container-oomkilled"]}
+        }
+      ]
+    },
+    {
       "id": "fixture-missing-configmap",
       "evidenceClass": "synthetic-fixture",
       "fixture": "missing-configmap",

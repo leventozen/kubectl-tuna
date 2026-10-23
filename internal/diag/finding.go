@@ -61,6 +61,7 @@ const (
 	ContainerSIGKILL       FindingType = "container-sigkill"
 	DeploymentUnavailable  FindingType = "deployment-unavailable"
 	StatefulSetUnavailable FindingType = "statefulset-unavailable"
+	JobFailed              FindingType = "job-failed"
 	RolloutStuck           FindingType = "rollout-stuck"
 
 	// Scheduling and resources

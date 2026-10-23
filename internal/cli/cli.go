@@ -79,6 +79,7 @@ Install the binary as a kubectl PATH plugin and run:
 		newInspectKindCommand(opts, "service", "Inspect a Service and its traffic path"),
 		newInspectKindCommand(opts, "deployment", "Inspect a Deployment and its workload lifecycle"),
 		newInspectKindCommand(opts, "statefulset", "Inspect a StatefulSet and its ordered workload lifecycle"),
+		newInspectKindCommand(opts, "job", "Inspect a Job and its run-to-completion lifecycle"),
 		newInspectKindCommand(opts, "pod", "Inspect a Pod, its owners, node, and the Services selecting it"),
 	)
 	root.AddCommand(inspect)
@@ -154,6 +155,8 @@ func collect(ctx context.Context, c *kube.Collector, kind, namespace, name strin
 		return c.CollectDeployment(ctx, namespace, name)
 	case "statefulset":
 		return c.CollectStatefulSet(ctx, namespace, name)
+	case "job":
+		return c.CollectJob(ctx, namespace, name)
 	case "pod":
 		return c.CollectPod(ctx, namespace, name)
 	default:

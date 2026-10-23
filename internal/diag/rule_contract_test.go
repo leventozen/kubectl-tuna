@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -124,6 +125,13 @@ func TestBuiltInRuleContracts(t *testing.T) {
 				return statefulSetAvailabilityContractGraph(0)
 			}}},
 			negative: func() *graph.Graph { return statefulSetAvailabilityContractGraph(1) },
+		},
+		{
+			rule: jobFailedRule{},
+			positives: []positiveCase{{JobFailed, func() *graph.Graph {
+				return jobConditionContractGraph(batchv1.JobFailed)
+			}}},
+			negative: func() *graph.Graph { return jobConditionContractGraph(batchv1.JobComplete) },
 		},
 		{
 			rule: rolloutStuckRule{},
@@ -399,6 +407,43 @@ func statefulSetAvailabilityContractGraph(available int32) *graph.Graph {
 		},
 	})
 	return g
+}
+
+func jobConditionContractGraph(conditionType batchv1.JobConditionType) *graph.Graph {
+	ref := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup"}
+	g := graph.New(ref)
+	g.AddNode(ref, &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: ref.Name, Namespace: ref.Namespace},
+		Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{{
+			Type: conditionType, Status: corev1.ConditionTrue,
+			Reason: "contract", Message: "contract condition",
+		}}},
+	})
+	return g
+}
+
+func TestJobFailedAcceptsControllerFailureTarget(t *testing.T) {
+	findings := jobFailedRule{}.Evaluate(jobConditionContractGraph(batchv1.JobFailureTarget))
+	require.Len(t, findings, 1)
+	require.Equal(t, JobFailed, findings[0].Type)
+	require.Contains(t, findings[0].Detail, "not terminal yet")
+}
+
+func TestJobFailedDoesNotInferFailureFromCounters(t *testing.T) {
+	ref := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "retrying"}
+	g := graph.New(ref)
+	g.AddNode(ref, &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: ref.Name, Namespace: ref.Namespace},
+		Status: batchv1.JobStatus{
+			Active: 1,
+			Failed: 3,
+			Conditions: []batchv1.JobCondition{{
+				Type: batchv1.JobFailed, Status: corev1.ConditionFalse,
+			}},
+		},
+	})
+
+	require.Empty(t, jobFailedRule{}.Evaluate(g))
 }
 
 func TestStatefulSetUnavailableIgnoresScaledToZero(t *testing.T) {

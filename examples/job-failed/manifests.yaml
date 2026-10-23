@@ -1,0 +1,37 @@
+# Scenario: a one-shot Job exceeds its container memory limit. With no retry
+# budget, the Job controller records a terminal Failed condition.
+#
+# Expected Tuna diagnosis:
+#   container-oomkilled → pod-not-ready → job-failed
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tuna-demo
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backup
+  namespace: tuna-demo
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: backup
+          image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              x=x
+              while true; do
+                x=$x$x$x$x
+              done
+          resources:
+            requests:
+              memory: 8Mi
+            limits:
+              memory: 16Mi

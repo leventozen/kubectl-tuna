@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -77,6 +78,58 @@ func TestCorrelationRequiresOwningStatefulSet(t *testing.T) {
 	Correlate([]*Finding{notReady, unavailable}, g)
 	require.Equal(t, []*Finding{unavailable}, notReady.Causes)
 	require.Equal(t, []*Finding{notReady}, unavailable.CausedBy)
+}
+
+func TestCorrelationRequiresOwningJob(t *testing.T) {
+	jobA := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup-a"}
+	jobB := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup-b"}
+	pod := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "backup-a-1"}
+	g := graph.New(jobA)
+	backoffLimit := int32(0)
+	g.AddNode(jobA, &batchv1.Job{
+		Spec: batchv1.JobSpec{BackoffLimit: &backoffLimit},
+		Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{{
+			Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "BackoffLimitExceeded",
+		}}},
+	})
+	g.AddNode(jobB, &batchv1.Job{
+		Spec: batchv1.JobSpec{BackoffLimit: &backoffLimit},
+		Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{{
+			Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "DeadlineExceeded",
+		}}},
+	})
+	g.AddNode(pod, &corev1.Pod{Status: corev1.PodStatus{Phase: corev1.PodFailed}})
+	g.AddEdge(jobA, pod, graph.EdgeOwns)
+
+	cause := &Finding{Type: PodNotReady, Resource: pod}
+	ownedEffect := &Finding{Type: JobFailed, Resource: jobA}
+	unrelatedEffect := &Finding{Type: JobFailed, Resource: jobB}
+	Correlate([]*Finding{cause, ownedEffect, unrelatedEffect}, g)
+
+	require.Contains(t, cause.Causes, ownedEffect)
+	require.Contains(t, ownedEffect.CausedBy, cause)
+	require.Empty(t, unrelatedEffect.CausedBy)
+}
+
+func TestJobCorrelationDoesNotTreatOrdinaryNotReadyPodAsFailureCause(t *testing.T) {
+	jobRef := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup"}
+	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "backup-1"}
+	backoffLimit := int32(1)
+	g := graph.New(jobRef)
+	g.AddNode(jobRef, &batchv1.Job{
+		Spec: batchv1.JobSpec{BackoffLimit: &backoffLimit},
+		Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{{
+			Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "BackoffLimitExceeded",
+		}}},
+	})
+	g.AddNode(podRef, &corev1.Pod{Status: corev1.PodStatus{Phase: corev1.PodPending}})
+	g.AddEdge(jobRef, podRef, graph.EdgeOwns)
+
+	notReady := &Finding{Type: PodNotReady, Resource: podRef}
+	failed := &Finding{Type: JobFailed, Resource: jobRef}
+	Correlate([]*Finding{notReady, failed}, g)
+	require.Empty(t, notReady.Causes)
+	require.Empty(t, failed.CausedBy)
 }
 
 func TestCorrelationRequiresSameContainer(t *testing.T) {

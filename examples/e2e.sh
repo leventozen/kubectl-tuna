@@ -36,6 +36,7 @@ ALL_E2E_CASES=(
 	hpa-metrics-unavailable
 	pending-pvc
 	statefulset-unavailable
+	job-failed
 	oomkilled
 )
 
@@ -440,6 +441,42 @@ raise SystemExit(0 if ok else 1)
 '
 }
 
+matches_job_failed_contract() {
+	python3 -c '
+import json, sys
+res = json.load(sys.stdin)
+findings = res.get("findings", [])
+
+def one(finding_type):
+    matches = [finding for finding in findings if finding.get("type") == finding_type]
+    return matches[0] if len(matches) == 1 else None
+
+oom = one("container-oomkilled")
+not_ready = one("pod-not-ready")
+failed = one("job-failed")
+actual_types = sorted(finding.get("type") for finding in findings)
+expected_types = sorted(["container-oomkilled", "pod-not-ready", "job-failed"])
+
+ok = all([oom, not_ready, failed]) and (
+    res.get("health") == "degraded"
+    and res.get("partial") is False
+    and res.get("warnings", []) == []
+    and actual_types == expected_types
+    and res.get("rootCauses") == [oom.get("id")]
+    and oom.get("resource", {}).get("kind") == "Pod"
+    and oom.get("subject", {}).get("container") == "backup"
+    and oom.get("causes") == [not_ready.get("id")]
+    and oom.get("causedBy", []) == []
+    and not_ready.get("causedBy") == [oom.get("id")]
+    and not_ready.get("causes") == [failed.get("id")]
+    and failed.get("resource", {}).get("kind") == "Job"
+    and failed.get("resource", {}).get("name") == "backup"
+    and failed.get("causedBy") == [not_ready.get("id")]
+)
+raise SystemExit(0 if ok else 1)
+'
+}
+
 matches_stale_event_identity_contract() {
 	python3 -c '
 import json, sys
@@ -717,6 +754,37 @@ check_statefulset_unavailable() {
 		echo "FAIL: StatefulSet ownership contract was not met within ${deadline_s}s (exit: $status)"
 		[ -n "$out" ] && echo "$out"
 		kubectl get statefulset database -n tuna-demo -o yaml 2>/dev/null || true
+		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
+		fail=1
+	fi
+	kubectl delete namespace tuna-demo --wait >/dev/null
+}
+
+check_job_failed() {
+	local scenario="job-failed" deadline_s=240
+	echo "=== scenario: $scenario (terminal Job failure and exact Pod ownership) ==="
+	kubectl apply -f "$DIR/$scenario/manifests.yaml" >/dev/null
+
+	local start=$SECONDS out="" status=1 result="FAIL"
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		set +e
+		out="$("$TUNA_BIN" inspect job backup -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 2 ] && echo "$out" | matches_job_failed_contract; then
+			result="PASS"
+			break
+		fi
+	done
+
+	write_case_result "$scenario" "$out"
+	if [ "$result" = "PASS" ]; then
+		echo "PASS: OOMKilled Pod explained the terminal Job failure ($((SECONDS - start))s)"
+	else
+		echo "FAIL: Job failure contract was not met within ${deadline_s}s (exit: $status)"
+		[ -n "$out" ] && echo "$out"
+		kubectl get job backup -n tuna-demo -o yaml 2>/dev/null || true
 		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
 		fail=1
 	fi
@@ -1286,6 +1354,9 @@ run_selected_case() {
 		;;
 	statefulset-unavailable)
 		check_statefulset_unavailable
+		;;
+	job-failed)
+		check_job_failed
 		;;
 	oomkilled)
 		check oomkilled deployment billing 240 container-oomkilled

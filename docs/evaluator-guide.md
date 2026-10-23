@@ -23,6 +23,8 @@ Inspect with the built binary directly:
 ```bash
 ./bin/kubectl-tuna inspect service NAME -n NAMESPACE
 ./bin/kubectl-tuna inspect deployment NAME -n NAMESPACE
+./bin/kubectl-tuna inspect statefulset NAME -n NAMESPACE
+./bin/kubectl-tuna inspect job NAME -n NAMESPACE
 ./bin/kubectl-tuna inspect pod NAME -n NAMESPACE
 ```
 
@@ -142,7 +144,7 @@ aliases:
 
 - selectors and labels (rewrite values consistently so relationships still match)
 - owner relationships (Deployment → ReplicaSet → Pod, StatefulSet → Pod,
-  Service selection)
+  CronJob → Job → Pod, Service selection)
 - UID equality or inequality as consistent aliases when object identity matters
 - container identity
 - relevant status and conditions

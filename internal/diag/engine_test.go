@@ -69,6 +69,10 @@ func evaluateScenario(t *testing.T, scenario, focusKind, namespace, name string)
 		graph, err := collector.CollectStatefulSet(ctx, namespace, name)
 		require.NoError(t, err)
 		return diag.NewEngine().Evaluate(graph)
+	case "job":
+		graph, err := collector.CollectJob(ctx, namespace, name)
+		require.NoError(t, err)
+		return diag.NewEngine().Evaluate(graph)
 	case "pod":
 		graph, err := collector.CollectPod(ctx, namespace, name)
 		require.NoError(t, err)
@@ -132,6 +136,18 @@ func TestStatefulSetUnavailable(t *testing.T) {
 		diag.ImagePullFailure,
 		diag.PodNotReady,
 		diag.StatefulSetUnavailable,
+	}, chainTypes(res.RootCauses[0]))
+}
+
+func TestJobFailed(t *testing.T) {
+	res := evaluateScenario(t, "job-failed", "job", "batch", "backup")
+	require.Equal(t, diag.HealthDegraded, res.Health)
+	require.False(t, res.Partial)
+	require.Len(t, res.RootCauses, 1)
+	require.Equal(t, []diag.FindingType{
+		diag.ContainerOOMKilled,
+		diag.PodNotReady,
+		diag.JobFailed,
 	}, chainTypes(res.RootCauses[0]))
 }
 
