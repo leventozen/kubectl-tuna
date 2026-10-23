@@ -76,6 +76,20 @@
       ]
     },
     {
+      "id": "fixture-hpa-metrics-unavailable",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "hpa-metrics-unavailable",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["autoscaling", "metrics", "capacity-risk"],
+      "limitations": ["author-constructed", "fake-client", "controller-status-synthetic"],
+      "inspections": [
+        {
+          "focus": {"kind": "deployment", "namespace": "autoscaling", "name": "queue-worker"},
+          "expected": {"health": "healthy", "partial": false, "rootCauseTypes": []}
+        }
+      ]
+    },
+    {
       "id": "fixture-missing-configmap",
       "evidenceClass": "synthetic-fixture",
       "fixture": "missing-configmap",

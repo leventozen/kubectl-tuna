@@ -200,6 +200,20 @@ func TestPendingPersistentVolumeClaim(t *testing.T) {
 	}, chainTypes(root))
 }
 
+func TestUnavailableHPAMetricsRemainCapacityRisk(t *testing.T) {
+	res := evaluateScenario(t, "hpa-metrics-unavailable", "deployment", "autoscaling", "queue-worker")
+	require.Equal(t, diag.HealthOK, res.Health)
+	require.False(t, res.Partial)
+	require.Empty(t, res.RootCauses)
+
+	finding := findingOfType(res, diag.HPAMetricsUnavailable)
+	require.NotNil(t, finding)
+	require.Equal(t, diag.ImpactRisk, finding.Impact)
+	require.Equal(t, "HorizontalPodAutoscaler", finding.Resource.Kind)
+	require.False(t, finding.IsRootCandidate())
+	require.False(t, finding.IsSymptom())
+}
+
 func TestMissingConfigMap(t *testing.T) {
 	res := evaluateScenario(t, "missing-configmap", "deployment", "messaging", "notifier")
 	require.Equal(t, diag.HealthDegraded, res.Health)

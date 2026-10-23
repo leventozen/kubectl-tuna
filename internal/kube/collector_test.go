@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -613,6 +614,101 @@ func TestMissingPersistentVolumeClaimBecomesExactSchedulingRoot(t *testing.T) {
 	require.Equal(t, claimRef, res.RootCauses[0].Resource)
 }
 
+func TestDeploymentCollectorRetainsOnlyExactTargetHorizontalPodAutoscaler(t *testing.T) {
+	replicas := int32(2)
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns", UID: "dep-uid", Generation: 1},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
+		},
+		Status: appsv1.DeploymentStatus{ObservedGeneration: 1, AvailableReplicas: 2, ReadyReplicas: 2},
+	}
+	related := testHPA("api-autoscaler", "apps/v1", "Deployment", "api")
+	unrelated := testHPA("other-autoscaler", "apps/v1", "Deployment", "other")
+	wrongVersion := testHPA("legacy-autoscaler", "extensions/v1beta1", "Deployment", "api")
+	client := fakeClient(dep, related, unrelated, wrongVersion)
+
+	g, err := kube.NewCollector(client).CollectDeployment(context.Background(), "ns", "api")
+	require.NoError(t, err)
+	require.Equal(t, 1, actionCount(client.Actions(), "list", "horizontalpodautoscalers"))
+
+	hpaRef := graph.ResourceRef{Kind: "HorizontalPodAutoscaler", Namespace: "ns", Name: "api-autoscaler"}
+	depRef := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"}
+	node, ok := g.Node(hpaRef)
+	require.True(t, ok)
+	require.IsType(t, &autoscalingv2.HorizontalPodAutoscaler{}, node.Object)
+	require.True(t, g.HasEdge(hpaRef, depRef, graph.EdgeScales))
+
+	_, ok = g.Node(graph.ResourceRef{Kind: "HorizontalPodAutoscaler", Namespace: "ns", Name: "other-autoscaler"})
+	require.False(t, ok)
+	_, ok = g.Node(graph.ResourceRef{Kind: "HorizontalPodAutoscaler", Namespace: "ns", Name: "legacy-autoscaler"})
+	require.False(t, ok)
+}
+
+func TestHorizontalPodAutoscalerListFailureIsPartialAndDoesNotInventFinding(t *testing.T) {
+	replicas := int32(1)
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns", UID: "dep-uid", Generation: 1},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
+		},
+		Status: appsv1.DeploymentStatus{ObservedGeneration: 1, AvailableReplicas: 1, ReadyReplicas: 1},
+	}
+	client := fakeClient(dep)
+	client.PrependReactor("list", "horizontalpodautoscalers", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("forbidden")
+	})
+
+	g, err := kube.NewCollector(client).CollectDeployment(context.Background(), "ns", "api")
+	require.NoError(t, err)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthOK, res.Health)
+	require.True(t, res.Partial)
+	require.True(t, hasWarningSource(res, graph.SourceHorizontalPodAutoscaler))
+	require.False(t, hasFindingType(res, diag.HPAMetricsUnavailable))
+	require.False(t, hasFindingType(res, diag.HPAScaleUpLimited))
+}
+
+func TestStaleHorizontalPodAutoscalerStatusIsPartialAndSuppressed(t *testing.T) {
+	replicas := int32(1)
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns", UID: "dep-uid", Generation: 1},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
+		},
+		Status: appsv1.DeploymentStatus{ObservedGeneration: 1, AvailableReplicas: 1, ReadyReplicas: 1},
+	}
+	observed := int64(1)
+	hpa := testHPA("api", "apps/v1", "Deployment", "api")
+	hpa.Generation = 2
+	hpa.Status.ObservedGeneration = &observed
+	hpa.Status.Conditions = []autoscalingv2.HorizontalPodAutoscalerCondition{{
+		Type: autoscalingv2.ScalingActive, Status: corev1.ConditionFalse, Reason: "FailedGetResourceMetric",
+	}}
+	client := fakeClient(dep, hpa)
+
+	g, err := kube.NewCollector(client).CollectDeployment(context.Background(), "ns", "api")
+	require.NoError(t, err)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthOK, res.Health)
+	require.True(t, res.Partial)
+	require.True(t, hasWarningForResource(res, graph.SourceHorizontalPodAutoscaler, graph.ResourceRef{
+		Kind: "HorizontalPodAutoscaler", Namespace: "ns", Name: "api",
+	}))
+	require.False(t, hasFindingType(res, diag.HPAMetricsUnavailable))
+}
+
+func TestPodWithoutDeploymentOwnerDoesNotListHorizontalPodAutoscalers(t *testing.T) {
+	client := fakeClient(readyPod("standalone"))
+
+	_, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", "standalone")
+	require.NoError(t, err)
+	require.Zero(t, actionCount(client.Actions(), "list", "horizontalpodautoscalers"))
+}
+
 func TestMissingProjectedConfigMapKeepsContainerSubject(t *testing.T) {
 	pod := readyPod("api-1")
 	pod.Status.Conditions[0].Status = corev1.ConditionFalse
@@ -647,6 +743,18 @@ func readyPod(name string) *corev1.Pod {
 		Status: corev1.PodStatus{Phase: corev1.PodRunning, Conditions: []corev1.PodCondition{
 			{Type: corev1.PodReady, Status: corev1.ConditionTrue},
 		}},
+	}
+}
+
+func testHPA(name, apiVersion, kind, targetName string) *autoscalingv2.HorizontalPodAutoscaler {
+	return &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "ns"},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: apiVersion, Kind: kind, Name: targetName,
+			},
+			MaxReplicas: 5,
+		},
 	}
 }
 

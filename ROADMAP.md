@@ -40,19 +40,20 @@ symptom, and evidence Tuna could not collect.
 Tuna has a strong internal reliability baseline but almost no independent
 product validation:
 
-- 16 built-in rules own 19 finding types with direct positive and negative
+- 17 built-in rules own 21 finding types with direct positive and negative
   contracts.
-- Nine author-constructed fixture snapshots provide ten inspections and one
+- Ten author-constructed fixture snapshots provide eleven inspections and one
   healthy control.
-- Eleven author-constructed Kind scenarios provide twelve phases when run and
+- Twelve author-constructed Kind scenarios provide thirteen phases when run and
   target six distinct root-cause patterns (one also exercises cross-container isolation; one
   also exercises same-name Pod Event identity; one also exercises a
   multiple-ReplicaSet rollout boundary), one healthy control, one recovery
   phase, one incomplete-RBAC abstention, and one cross-workload isolation
   boundary. The previous ten-scenario set was observed live; the new
-  Pending-PVC scenario awaits its first full remote matrix observation.
+  Pending-PVC and HPA-metrics scenarios await their first full remote matrix
+  observation.
   Repeating them across four Kubernetes minors validates compatibility
-  mechanics; it does not create 44 independent cases.
+  mechanics; it does not create 48 independent cases.
 - There are no sanitized field incidents and no completed external-operator
   trials yet.
 
@@ -282,7 +283,7 @@ whether the model survives Kubernetes behavior it was not authored around.
   scenarios; corpus precision and environment diversity remain open.
 - [x] Add a machine-readable seed-corpus manifest and harness that asserts
   exact root-cause sets, health, and partial state across existing fixtures.
-  All nine snapshots are explicitly labeled `synthetic-fixture`; they do not
+  All ten snapshots are explicitly labeled `synthetic-fixture`; they do not
   count as real-cluster validation or satisfy the corpus-size target.
 - [x] Persist the exact API server build, Node kubelet versions, container
   runtimes, operating-system details, and distribution label with every e2e
@@ -425,7 +426,13 @@ Likely next slices:
   green across the current remote Kubernetes matrix; PersistentVolumes,
   StorageClasses, CSI state, and mount/startup failures remain separate future
   slices.
-- HPA metric unavailable and at-limit state into Deployment capacity symptoms.
+- [ ] HPA metric-unavailable and upper-limit state for exact target
+  Deployments. The collector, `scales` edge, fail-closed structured-condition
+  rule, RBAC documentation, negative contracts, synthetic corpus case, and
+  metric-unavailable Kind scenario are implemented. Findings remain standalone
+  risks because neither condition proves workload outage. Keep this open until
+  the new scenario is green across the current remote Kubernetes matrix; a
+  deterministic live upper-limit reproduction also remains open.
 - StatefulSet ownership and rollout semantics, designed independently from
   Deployment assumptions.
 - Job/CronJob failure lifecycle.

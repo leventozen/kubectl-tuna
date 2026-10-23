@@ -59,6 +59,8 @@ func DefaultRuleRegistrations() []RuleRegistration {
 		// Scheduling and resources
 		builtInRule(podUnschedulableRule{}, RuleFamilyScheduling, "classify a PodScheduled false condition and supporting scheduling events", PodUnschedulable),
 		builtInRule(persistentVolumeClaimRule{}, RuleFamilyStorage, "report missing claims and classify Pending claims without treating normal delayed binding as a proven outage", PersistentVolumeClaimMissing, PersistentVolumeClaimPending),
+		// Autoscaling
+		builtInRule(horizontalPodAutoscalerRule{}, RuleFamilyAutoscaling, "report unavailable HPA metrics and an active upper replica cap without claiming workload outage", HPAMetricsUnavailable, HPAScaleUpLimited),
 		// Node and eviction
 		builtInKubeletRule(nodePressureRule{}, RuleFamilyNode, "report active Node memory, disk, or PID pressure conditions", NodePressure),
 		builtInKubeletRule(podEvictedRule{}, RuleFamilyNode, "report a Pod whose terminal reason is Evicted", PodEvicted),

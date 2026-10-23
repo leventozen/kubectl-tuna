@@ -35,11 +35,16 @@ is documented in [`temporal-integrity.md`](temporal-integrity.md).
 | core | `events` | `list` | fetch supporting events with exact kind/name field selectors for related non-Ready Pods |
 | apps | `deployments` | `get` | fetch a Deployment focus or resolve a Pod owner |
 | apps | `replicasets` | `get`, `list` | resolve Deployment→ReplicaSet→Pod ownership |
+| autoscaling | `horizontalpodautoscalers` | `list` | discover HPAs whose exact scale target is a collected Deployment |
 | discovery.k8s.io | `endpointslices` | `list` | inspect endpoint readiness for a Service |
 | core, cluster-scoped | `nodes` | `get` | inspect pressure conditions and establish the kubelet version for the exact Node hosting a collected Pod |
 
 Tuna does not request create, update, patch, delete, watch, exec, logs, metrics,
 or port-forward access.
+The HPA list returns full HPA objects, whose status can contain
+controller-reported `currentMetrics` summaries. Tuna does not call the resource,
+custom, or external metrics APIs and does not emit those current metric values
+in its findings.
 
 ### Operations by entry point
 
@@ -56,11 +61,17 @@ allowed. A narrower grant can follow this table (`—` means no current call):
 | `events` | `list` | `list` | `list` |
 | `deployments` | `get` | `get` | `get` |
 | `replicasets` | `get` | `list` | `get` |
+| `horizontalpodautoscalers.autoscaling` | conditional `list` | `list` | conditional `list` |
 | `endpointslices.discovery.k8s.io` | `list` | `list` | `list` |
 | cluster-scoped `nodes` | optional `get` | optional `get` | optional `get` |
 
 Service discovery for Deployment and Pod focus remains a namespace list
 because Kubernetes has no reverse query over `Service.spec.selector`.
+HPA discovery is also a namespace list because Kubernetes does not expose a
+field selector for `spec.scaleTargetRef`; Tuna makes that request only when the
+retained graph contains a Deployment and keeps only exact `apps/v1 Deployment`
+targets. “Conditional” in the table means a Service- or Pod-focused graph with
+no Deployment owner makes no HPA request.
 EndpointSlice and Event lists use label/field selectors, but RBAC still
 expresses their verb as `list`.
 
@@ -105,6 +116,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["replicasets"]
     verbs: ["get", "list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["list"]
   - apiGroups: ["discovery.k8s.io"]
     resources: ["endpointslices"]
     verbs: ["list"]
@@ -162,11 +176,13 @@ Tuna reports the missing permission rather than running version-scoped rules.
 
 ## Known broad reads
 
-The retained graph is focused, but one reverse-discovery operation is broader
+The retained graph is focused, but two reverse-discovery operations are broader
 than ideal:
 
 - Services are listed across the namespace to discover which ones select a
   Pod or Deployment-owned Pod.
+- HorizontalPodAutoscalers are listed across the namespace when the retained
+  graph contains a Deployment, then filtered by exact `scaleTargetRef`.
 
 Deployment-owned ReplicaSets and Pods, and Service EndpointSlices, already use
 label selectors. Pod Events use exact involved-object field selectors and are
@@ -182,6 +198,10 @@ supports a reliable query.
 - A changed focus identity/revision or stale collected Deployment/ReplicaSet
   generation suspends rule evaluation instead of turning a reconciliation
   window into a diagnosis.
+- A populated but stale HPA `status.observedGeneration` suppresses only HPA
+  findings and is reported as non-health-blocking partial evidence. The field's
+  absence is tolerated because it is not populated throughout the reviewed
+  Kubernetes window.
 - Failure to determine the API server version skips version-scoped rules and is
   health-blocking incomplete evidence.
 - Failure to read or parse a related Node's kubelet version skips only rules
@@ -190,8 +210,9 @@ supports a reliable query.
   the API server or outside the rule's reviewed range.
 - EndpointSlice failure for a Service focus makes health `unknown` because
   endpoint health cannot be established.
-- Failure to discover or enrich related Pods, ReplicaSets, Services, Nodes,
-  ConfigMaps, PersistentVolumeClaims, or Events is emitted as partial evidence.
+- Failure to discover or enrich related Pods, ReplicaSets, Services,
+  HorizontalPodAutoscalers, Nodes, ConfigMaps, PersistentVolumeClaims, or Events
+  is emitted as partial evidence.
   A rule must not treat that failure as object absence.
 - A definitive ConfigMap `NotFound` response is evidence of a missing
   reference; a timeout or `Forbidden` response is not.

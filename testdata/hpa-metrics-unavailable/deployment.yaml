@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: queue-worker
+  namespace: autoscaling
+  uid: deployment-queue-worker
+  resourceVersion: "10"
+  generation: 1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: queue-worker
+  template:
+    metadata:
+      labels:
+        app: queue-worker
+    spec:
+      containers:
+        - name: worker
+          image: example/queue-worker:v1
+          resources:
+            requests:
+              cpu: 100m
+status:
+  observedGeneration: 1
+  replicas: 2
+  readyReplicas: 2
+  availableReplicas: 2

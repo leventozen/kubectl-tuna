@@ -1,0 +1,49 @@
+# Kind does not install metrics-server by default. The Deployment becomes
+# healthy, while its HPA deterministically reports FailedGetResourceMetric.
+# Tuna must expose that as a standalone capacity risk, not an outage root.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tuna-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: queue-worker
+  namespace: tuna-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: queue-worker
+  template:
+    metadata:
+      labels:
+        app: queue-worker
+    spec:
+      containers:
+        - name: worker
+          image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+          resources:
+            requests:
+              cpu: 100m
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: queue-worker
+  namespace: tuna-demo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: queue-worker
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60

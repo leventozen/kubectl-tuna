@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Deploy a broken scenario to the current cluster and diagnose it with Tuna.
+# Deploy a broken or constrained scenario to the current cluster and diagnose it with Tuna.
 #
 # Usage: examples/run-demo.sh <scenario> [--keep]
-#   scenarios: broken-readiness-port | service-selector-mismatch | oomkilled | failed-scheduling | pending-pvc
+#   scenarios: broken-readiness-port | service-selector-mismatch | oomkilled | failed-scheduling | pending-pvc | hpa-metrics-unavailable
 set -euo pipefail
 
 SCENARIO="${1:?usage: run-demo.sh <scenario> [--keep]}"
@@ -31,6 +31,11 @@ pending-pvc)
 	NAME="storage-api"
 	WAIT=20
 	;;
+hpa-metrics-unavailable)
+	KIND="deployment"
+	NAME="queue-worker"
+	WAIT=30
+	;;
 *)
 	echo "unknown scenario: $SCENARIO" >&2
 	exit 1
@@ -54,5 +59,9 @@ if [ "$KEEP" != "--keep" ]; then
 	kubectl delete namespace tuna-demo --wait=false
 fi
 
-# Tuna exits 2 when findings are present: that's success for a broken demo.
-[ "$status" -eq 2 ]
+# Risk-only scenarios keep the focus healthy and exit 0; broken scenarios exit 2.
+if [ "$SCENARIO" = "hpa-metrics-unavailable" ]; then
+	[ "$status" -eq 0 ]
+else
+	[ "$status" -eq 2 ]
+fi

@@ -67,9 +67,6 @@ func TestSeedCorpusExpectations(t *testing.T) {
 			for _, inspection := range corpusCase.Inspections {
 				inspection := inspection
 				inspectionCount++
-				if inspection.Expected.Health == diag.HealthOK {
-					healthyControlCount++
-				}
 
 				name := fmt.Sprintf("%s/%s/%s", inspection.Focus.Kind, inspection.Focus.Namespace, inspection.Focus.Name)
 				t.Run(name, func(t *testing.T) {
@@ -84,6 +81,9 @@ func TestSeedCorpusExpectations(t *testing.T) {
 					require.Equal(t, inspection.Expected.Health, result.Health)
 					require.Equal(t, *inspection.Expected.Partial, result.Partial)
 					require.Equal(t, sortedFindingTypes(inspection.Expected.RootCauseTypes), rootCauseTypes(result))
+					if result.Health == diag.HealthOK && len(result.Findings) == 0 {
+						healthyControlCount++
+					}
 				})
 			}
 		})

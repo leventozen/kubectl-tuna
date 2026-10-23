@@ -86,6 +86,7 @@ func (c *Collector) CollectService(ctx context.Context, namespace, name string) 
 		}
 	}
 
+	c.collectHorizontalPodAutoscalers(ctx, g, namespace)
 	c.collectEvents(ctx, g, namespace)
 	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
 		return c.client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
@@ -212,6 +213,7 @@ func (c *Collector) CollectDeployment(ctx context.Context, namespace, name strin
 		}
 	}
 
+	c.collectHorizontalPodAutoscalers(ctx, g, namespace)
 	c.collectEvents(ctx, g, namespace)
 	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
 		return c.client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
@@ -343,6 +345,7 @@ func (c *Collector) CollectPod(ctx context.Context, namespace, name string) (*gr
 		}
 	}
 
+	c.collectHorizontalPodAutoscalers(ctx, g, namespace)
 	c.collectEvents(ctx, g, namespace)
 	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
 		return c.client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
@@ -588,6 +591,55 @@ func (c *Collector) addStorageRefs(ctx context.Context, g *graph.Graph, pod *cor
 			g.AddNode(ref, claim)
 		}
 		g.AddEdge(podRef, ref, graph.EdgeClaimsStorage)
+	}
+}
+
+// collectHorizontalPodAutoscalers retains only HPAs whose exact
+// scaleTargetRef points at a collected apps/v1 Deployment. Kubernetes does not
+// expose a field selector for scaleTargetRef, so this is one namespace-scoped
+// LIST performed only when the focused graph contains a Deployment.
+func (c *Collector) collectHorizontalPodAutoscalers(ctx context.Context, g *graph.Graph, namespace string) {
+	deployments := make(map[string]graph.ResourceRef)
+	for _, node := range g.NodesOfKind("Deployment") {
+		if _, ok := node.Object.(*appsv1.Deployment); !ok || node.Ref.Namespace != namespace {
+			continue
+		}
+		deployments[node.Ref.Name] = node.Ref
+	}
+	if len(deployments) == 0 {
+		return
+	}
+
+	hpas, err := c.client.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourceHorizontalPodAutoscaler, Resource: g.Focus,
+			Message: fmt.Sprintf("could not list HorizontalPodAutoscalers targeting collected Deployments: %v", err),
+		})
+		return
+	}
+	for i := range hpas.Items {
+		hpa := &hpas.Items[i]
+		target := hpa.Spec.ScaleTargetRef
+		if target.APIVersion != appsv1.SchemeGroupVersion.String() || target.Kind != "Deployment" {
+			continue
+		}
+		deploymentRef, ok := deployments[target.Name]
+		if !ok {
+			continue
+		}
+		hpaRef := graph.ResourceRef{Kind: "HorizontalPodAutoscaler", Namespace: namespace, Name: hpa.Name}
+		g.AddNode(hpaRef, hpa.DeepCopy())
+		g.AddEdge(hpaRef, deploymentRef, graph.EdgeScales)
+		if hpa.Generation > 0 && hpa.Status.ObservedGeneration != nil && *hpa.Status.ObservedGeneration < hpa.Generation {
+			g.AddCollectionIssue(graph.CollectionIssue{
+				Source: graph.SourceHorizontalPodAutoscaler, Resource: hpaRef,
+				Message: fmt.Sprintf(
+					"HorizontalPodAutoscaler controller observed generation %d, behind metadata.generation %d; autoscaling findings were suppressed",
+					*hpa.Status.ObservedGeneration, hpa.Generation,
+				),
+			})
+		}
 	}
 }
 

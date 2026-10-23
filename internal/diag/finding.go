@@ -67,6 +67,10 @@ const (
 	PersistentVolumeClaimMissing FindingType = "persistent-volume-claim-missing"
 	PersistentVolumeClaimPending FindingType = "persistent-volume-claim-pending"
 
+	// Autoscaling
+	HPAMetricsUnavailable FindingType = "hpa-metrics-unavailable"
+	HPAScaleUpLimited     FindingType = "hpa-scale-up-limited"
+
 	// Node and eviction
 	NodePressure FindingType = "node-pressure"
 	PodEvicted   FindingType = "pod-evicted"

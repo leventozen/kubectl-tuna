@@ -142,6 +142,7 @@ rule, correlation, health, and rendering walkthrough.
 | Workload lifecycle | `crashloop-backoff`, `image-pull-failure`, `missing-config-reference`, `container-oomkilled`, `container-sigkill`, `deployment-unavailable` |
 | Scheduling | `pod-unschedulable` (resource shortage, untolerated taint, affinity/selector mismatch) |
 | Storage | `persistent-volume-claim-missing`, `persistent-volume-claim-pending` (Pending is a risk unless exact scheduler evidence proves it is blocking) |
+| Autoscaling | `hpa-metrics-unavailable`, `hpa-scale-up-limited` (standalone capacity risks; neither is treated as proof of workload outage) |
 | Node and eviction | `node-pressure`, `pod-evicted` |
 | Rollout | `rollout-stuck` |
 
@@ -174,7 +175,8 @@ workload as hypotheses to check rather than pretending one is proven.
 
 ## Reproducible scenarios
 
-The examples are intentionally broken systems for a disposable cluster:
+The examples are intentionally broken or constrained systems for a disposable
+cluster:
 
 ```bash
 kind create cluster
@@ -183,6 +185,7 @@ make demo SCENARIO=service-selector-mismatch
 make demo SCENARIO=oomkilled
 make demo SCENARIO=failed-scheduling
 make demo SCENARIO=pending-pvc
+make demo SCENARIO=hpa-metrics-unavailable
 ```
 
 The broken scenarios run against Kind in `examples/e2e.sh`, together with
@@ -192,7 +195,9 @@ access, two Deployments deliberately selected by the same Service, a
 same-name Pod recreation that must not inherit a previous incarnation's Events,
 and a multiple-ReplicaSet rollout boundary. A Pending-PVC case verifies the
 exact PVC→Pod scheduling chain without treating normal delayed binding as a
-proven outage. The RBAC case must return `unknown`
+proven outage. An HPA case verifies that an unavailable metrics pipeline is
+shown as a standalone capacity risk while the target Deployment remains
+healthy. The RBAC case must return `unknown`
 with explicit partial evidence and no false zero-endpoint finding. The
 shared-Service case proves that a broken Pod explains only its owning Deployment
 even when another selected workload has its own unavailable finding. A
@@ -232,7 +237,7 @@ every related Node's kubelet version. Mixed kubelet minors inside the reviewed
 window are allowed; unavailable, newer-than-server, or unreviewed kubelets skip
 only those rules and make the result explicitly `unknown`.
 
-`make corpus` runs the machine-readable seed-corpus contract. Its current nine
+`make corpus` runs the machine-readable seed-corpus contract. Its current ten
 snapshots are author-constructed fake-client fixtures, not real-cluster
 evidence; one is a healthy control. Evidence classes, case-acceptance rules,
 and the intentionally still-open 25-case/10-control target are documented in
@@ -272,6 +277,10 @@ field-validation cases.
   Tuna does not currently read PersistentVolumes, StorageClasses, CSI objects,
   or PVC Events, so a Pending claim without exact scheduler storage evidence is
   reported as risk rather than a confirmed scheduling root.
+- HPA diagnostics list `autoscaling/v2` objects only when a collected
+  Deployment exists, then retain exact `apps/v1 Deployment` targets. Tuna does
+  not read metrics APIs. Metric-unavailable and active max-replica conditions
+  are capacity risks, not proof of current user-visible saturation.
 - Equivalent replica findings are grouped only in console presentation; JSON
   deliberately retains every per-Pod finding and evidence item.
 - “Root cause candidate” means the most upstream finding supported by the

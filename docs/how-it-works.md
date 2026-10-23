@@ -27,17 +27,20 @@ that focus.
 
 | Focus | Relationships collected |
 |---|---|
-| Service | selected Pods, their owner chains and Nodes, the Service's EndpointSlices, ConfigMap/Secret/PVC references, related events |
-| Deployment | owned ReplicaSets and Pods, Services selecting those Pods, their EndpointSlices, Nodes, configuration and PVC references, related events |
-| Pod | owner chain, scheduled Node, Services selecting the Pod, their EndpointSlices, configuration and PVC references, related events |
+| Service | selected Pods, their owner chains and Nodes, the Service's EndpointSlices, ConfigMap/Secret/PVC references, related Deployment HPAs, related events |
+| Deployment | owned ReplicaSets and Pods, Services selecting those Pods, their EndpointSlices, Nodes, configuration and PVC references, exact-target HPAs, related events |
+| Pod | owner chain, scheduled Node, Services selecting the Pod, their EndpointSlices, configuration and PVC references, related Deployment HPAs, related events |
 
 “Focused” describes the retained graph, not a promise that every Kubernetes
 API call is object-scoped. Discovering reverse relationships such as “which
 Services select this Pod?” still requires some namespace-scoped list calls.
 Those calls and the intended minimum RBAC contract are still being tightened.
 
-The collector does not run `exec`, read logs or metrics, or modify cluster
-state. It also does not GET Secret objects: Kubernetes' typed Secret GET returns
+The collector does not run `exec`, read logs, query metrics APIs, or modify
+cluster state. A typed HPA list can include controller-reported
+`status.currentMetrics` summaries as part of each HPA object; Tuna does not emit
+those values in current findings. It also does not GET Secret objects:
+Kubernetes' typed Secret GET returns
 the payload, which is unnecessary for the current diagnostic model. The exact
 current API operations and least-privilege examples are documented in
 [`docs/rbac.md`](rbac.md).
@@ -107,6 +110,7 @@ Deployment --owns---------> ReplicaSet --owns---------> Pod
 Pod        --references---> ConfigMap / Secret reference
 Pod        --claims-storage-> PersistentVolumeClaim
 Pod        --scheduled-on-> Node
+HorizontalPodAutoscaler --scales-> Deployment
 ```
 
 Direction and edge type are part of correctness. Two Pods being reachable
@@ -200,6 +204,21 @@ when the Pod has exactly one unresolved claim and its `PodScheduled=False`
 condition with reason `Unschedulable` identifies an unbound claim. Multiple
 unresolved claims remain unlinked because the available evidence cannot identify which claim is
 the blocker.
+
+HPA findings are deliberately standalone. `ScalingActive=False` is reported
+as unavailable metrics only for the controller's metric-fetch failure reasons;
+`ScalingDisabled` and selector/configuration failures are not mislabeled.
+`ScalingLimited=True` becomes a scale-up-limit risk only when the reason is
+`TooManyReplicas` and the normalized desired replica count equals
+`spec.maxReplicas`. Neither state is linked to `deployment-unavailable`: an HPA
+capacity constraint does not prove why the Deployment has fewer available
+replicas than its already-selected desired count.
+When HPA `status.observedGeneration` is populated and behind its metadata
+generation, Tuna produces partial evidence and no autoscaling finding;
+unrelated rules continue because stale optional HPA enrichment does not
+invalidate their Pod, Service, or Deployment evidence. Absence of that field
+does not suppress the rule because HPA controllers do not populate it
+throughout the full reviewed Kubernetes window.
 
 ### 7. Calculate focus health separately from findings
 

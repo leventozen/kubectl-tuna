@@ -33,6 +33,7 @@ ALL_E2E_CASES=(
 	multiple-replicaset-rollout
 	service-selector-mismatch
 	failed-scheduling
+	hpa-metrics-unavailable
 	pending-pvc
 	oomkilled
 )
@@ -379,6 +380,30 @@ raise SystemExit(0 if ok else 1)
 ' "$expected_roots"
 }
 
+matches_hpa_metrics_unavailable_contract() {
+	python3 -c '
+import json, sys
+res = json.load(sys.stdin)
+findings = res.get("findings", [])
+finding = findings[0] if len(findings) == 1 else {}
+ok = (
+    res.get("health") == "healthy"
+    and res.get("partial") is False
+    and res.get("warnings", []) == []
+    and res.get("rootCauses") == []
+    and finding.get("type") == "hpa-metrics-unavailable"
+    and finding.get("impact") == "risk"
+    and finding.get("confidence") == "high"
+    and finding.get("resource", {}).get("kind") == "HorizontalPodAutoscaler"
+    and finding.get("resource", {}).get("name") == "queue-worker"
+    and finding.get("rootCause") is False
+    and finding.get("causes", []) == []
+    and finding.get("causedBy", []) == []
+)
+raise SystemExit(0 if ok else 1)
+'
+}
+
 matches_stale_event_identity_contract() {
 	python3 -c '
 import json, sys
@@ -595,6 +620,37 @@ check_healthy() {
 	else
 		echo "FAIL: healthy control did not become strictly healthy within ${deadline_s}s (exit: $status)"
 		[ -n "$out" ] && echo "$out"
+		fail=1
+	fi
+	kubectl delete namespace tuna-demo --wait >/dev/null
+}
+
+check_hpa_metrics_unavailable() {
+	local scenario="hpa-metrics-unavailable" deadline_s=120
+	echo "=== scenario: $scenario (standalone capacity risk, deadline: ${deadline_s}s) ==="
+	kubectl apply -f "$DIR/$scenario/manifests.yaml" >/dev/null
+
+	local start=$SECONDS out="" status=1 result="FAIL"
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		set +e
+		out="$("$TUNA_BIN" inspect deployment queue-worker -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 0 ] && echo "$out" | matches_hpa_metrics_unavailable_contract; then
+			result="PASS"
+			break
+		fi
+	done
+
+	write_case_result "$scenario" "$out"
+	if [ "$result" = "PASS" ]; then
+		echo "PASS: unavailable HPA metrics remained a standalone risk ($((SECONDS - start))s)"
+	else
+		echo "FAIL: HPA metric-unavailable contract was not met within ${deadline_s}s (exit: $status)"
+		[ -n "$out" ] && echo "$out"
+		kubectl get hpa queue-worker -n tuna-demo -o yaml 2>/dev/null || true
+		kubectl get deployment queue-worker -n tuna-demo -o yaml 2>/dev/null || true
 		fail=1
 	fi
 	kubectl delete namespace tuna-demo --wait >/dev/null
@@ -1154,6 +1210,9 @@ run_selected_case() {
 		;;
 	failed-scheduling)
 		check failed-scheduling deployment analytics 90 pod-unschedulable
+		;;
+	hpa-metrics-unavailable)
+		check_hpa_metrics_unavailable
 		;;
 	pending-pvc)
 		check pending-pvc deployment storage-api 120 persistent-volume-claim-pending

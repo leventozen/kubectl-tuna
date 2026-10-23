@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -149,6 +150,29 @@ func TestBuiltInRuleContracts(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "data", Namespace: "ns"},
 					Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
 				})
+			},
+		},
+		{
+			rule: horizontalPodAutoscalerRule{},
+			positives: []positiveCase{
+				{HPAMetricsUnavailable, func() *graph.Graph {
+					return hpaContractGraph(autoscalingv2.HorizontalPodAutoscalerCondition{
+						Type: autoscalingv2.ScalingActive, Status: corev1.ConditionFalse,
+						Reason: "FailedGetResourceMetric", Message: "resource metrics API unavailable",
+					}, 2, 5)
+				}},
+				{HPAScaleUpLimited, func() *graph.Graph {
+					return hpaContractGraph(autoscalingv2.HorizontalPodAutoscalerCondition{
+						Type: autoscalingv2.ScalingLimited, Status: corev1.ConditionTrue,
+						Reason: "TooManyReplicas", Message: "desired count is above the maximum",
+					}, 5, 5)
+				}},
+			},
+			negative: func() *graph.Graph {
+				return hpaContractGraph(autoscalingv2.HorizontalPodAutoscalerCondition{
+					Type: autoscalingv2.ScalingLimited, Status: corev1.ConditionFalse,
+					Reason: "DesiredWithinRange",
+				}, 2, 5)
 			},
 		},
 		{
@@ -397,6 +421,36 @@ func storageClaimContractGraph(claim *corev1.PersistentVolumeClaim) *graph.Graph
 		g.AddNode(claimRef, claim)
 	}
 	g.AddEdge(g.Focus, claimRef, graph.EdgeClaimsStorage)
+	return g
+}
+
+func hpaContractGraph(condition autoscalingv2.HorizontalPodAutoscalerCondition, desired, max int32) *graph.Graph {
+	observedGeneration := int64(1)
+	deploymentRef := graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"}
+	hpaRef := graph.ResourceRef{Kind: "HorizontalPodAutoscaler", Namespace: "ns", Name: "api"}
+	g := graph.New(deploymentRef)
+	g.AddNode(deploymentRef, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns"}})
+	g.AddNode(hpaRef, &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns", Generation: 1},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{APIVersion: "apps/v1", Kind: "Deployment", Name: "api"},
+			MaxReplicas:    max,
+			Metrics: []autoscalingv2.MetricSpec{{
+				Type: autoscalingv2.ResourceMetricSourceType,
+				Resource: &autoscalingv2.ResourceMetricSource{
+					Name:   corev1.ResourceCPU,
+					Target: autoscalingv2.MetricTarget{Type: autoscalingv2.UtilizationMetricType},
+				},
+			}},
+		},
+		Status: autoscalingv2.HorizontalPodAutoscalerStatus{
+			ObservedGeneration: &observedGeneration,
+			CurrentReplicas:    2,
+			DesiredReplicas:    desired,
+			Conditions:         []autoscalingv2.HorizontalPodAutoscalerCondition{condition},
+		},
+	})
+	g.AddEdge(hpaRef, deploymentRef, graph.EdgeScales)
 	return g
 }
 

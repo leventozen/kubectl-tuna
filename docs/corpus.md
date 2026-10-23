@@ -18,8 +18,8 @@ Corpus cases must state where their evidence came from:
   reviewed after anonymization. This is the strongest regression evidence for
   behavior the author did not anticipate.
 
-The current machine-readable seed manifest contains nine
-`synthetic-fixture` snapshots and ten inspections. One snapshot is inspected
+The current machine-readable seed manifest contains ten
+`synthetic-fixture` snapshots and eleven inspections. One snapshot is inspected
 from both Service and Pod entry points; it still counts as one evidence case.
 Only one inspection is a healthy control. These numbers are deliberately not
 presented as Gate B progress toward 25 realistic cases and 10 healthy/recovered
