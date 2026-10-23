@@ -350,8 +350,11 @@ whether the model survives Kubernetes behavior it was not authored around.
   healthy-control false positives, actionable-chain coverage, and
   `unknown`/abstention rate. Precision alone rewards a tool that always says
   `unknown`; report usefulness and coverage beside it.
-- [ ] Add explicit mixed kubelet-version cases; API server version alone cannot
-  establish component-level semantics during upgrades.
+- [ ] Add explicit mixed kubelet-version real-cluster cases; API server version
+  alone cannot establish component-level semantics during upgrades. Registry
+  metadata now identifies kubelet-dependent rules, and the engine accepts mixed
+  in-range kubelets while failing closed for unavailable, newer-than-server, or
+  unreviewed kubelet versions. A real mixed-node reproduction remains open.
 
 Gate B passes only when the minimum corpus has no high-confidence false root,
 healthy/recovered controls remain healthy, confidence-bucket results and

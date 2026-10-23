@@ -19,16 +19,23 @@ func builtInRule(rule Rule, family RuleFamily, description string, findingTypes 
 	return RuleRegistration{
 		Rule: rule,
 		Metadata: RuleMetadata{
-			ID:           rule.ID(),
-			Family:       family,
-			Description:  description,
-			FindingTypes: append([]FindingType(nil), findingTypes...),
+			ID:             rule.ID(),
+			Family:         family,
+			Description:    description,
+			FindingTypes:   append([]FindingType(nil), findingTypes...),
+			VersionSources: []KubernetesVersionSource{VersionSourceAPIServer},
 			Compatibility: KubernetesCompatibility{
 				Min: minReviewedKubernetes,
 				Max: maxReviewedKubernetes,
 			},
 		},
 	}
+}
+
+func builtInKubeletRule(rule Rule, family RuleFamily, description string, findingTypes ...FindingType) RuleRegistration {
+	registration := builtInRule(rule, family, description, findingTypes...)
+	registration.Metadata.VersionSources = append(registration.Metadata.VersionSources, VersionSourceKubelet)
+	return registration
 }
 
 // DefaultRuleRegistrations returns the built-in rule set and the metadata
@@ -40,20 +47,20 @@ func DefaultRuleRegistrations() []RuleRegistration {
 		builtInRule(serviceTargetPortMismatchRule{}, RuleFamilyTraffic, "validate Service target ports against selected Pod container ports", ServiceTargetPortMismatch),
 		builtInRule(serviceNoReadyEndpointsRule{}, RuleFamilyTraffic, "classify EndpointSlice readiness for a Service", ServiceNoReadyEndpoints, ServiceTerminatingOnly),
 		builtInRule(readinessProbePortRule{}, RuleFamilyTraffic, "validate Pod readiness probe ports against the target container", ReadinessProbePortInvalid),
-		builtInRule(readinessProbeFailingRule{}, RuleFamilyTraffic, "report structured readiness failure state with narrowly matched events", ReadinessProbeFailing),
+		builtInKubeletRule(readinessProbeFailingRule{}, RuleFamilyTraffic, "report structured readiness failure state with narrowly matched events", ReadinessProbeFailing),
 		builtInRule(podNotReadyRule{}, RuleFamilyTraffic, "report Pods whose Ready condition is not true", PodNotReady),
 		// Workload lifecycle
-		builtInRule(crashLoopRule{}, RuleFamilyWorkload, "report containers waiting in CrashLoopBackOff", CrashLoopBackOff),
-		builtInRule(imagePullRule{}, RuleFamilyWorkload, "report container image pull failures", ImagePullFailure),
+		builtInKubeletRule(crashLoopRule{}, RuleFamilyWorkload, "report containers waiting in CrashLoopBackOff", CrashLoopBackOff),
+		builtInKubeletRule(imagePullRule{}, RuleFamilyWorkload, "report container image pull failures", ImagePullFailure),
 		builtInRule(missingConfigRefRule{}, RuleFamilyWorkload, "report definitively missing non-optional ConfigMap or Secret references", MissingConfigRef),
-		builtInRule(oomKilledRule{}, RuleFamilyWorkload, "classify confirmed OOMKilled and ambiguous SIGKILL termination state", ContainerOOMKilled, ContainerSIGKILL),
+		builtInKubeletRule(oomKilledRule{}, RuleFamilyWorkload, "classify confirmed OOMKilled and ambiguous SIGKILL termination state", ContainerOOMKilled, ContainerSIGKILL),
 		builtInRule(deploymentUnavailableRule{}, RuleFamilyWorkload, "report a Deployment below its desired availability", DeploymentUnavailable),
 		builtInRule(rolloutStuckRule{}, RuleFamilyRollout, "report Deployment ProgressDeadlineExceeded state", RolloutStuck),
 		// Scheduling and resources
 		builtInRule(podUnschedulableRule{}, RuleFamilyScheduling, "classify a PodScheduled false condition and supporting scheduling events", PodUnschedulable),
 		// Node and eviction
-		builtInRule(nodePressureRule{}, RuleFamilyNode, "report active Node memory, disk, or PID pressure conditions", NodePressure),
-		builtInRule(podEvictedRule{}, RuleFamilyNode, "report a Pod whose terminal reason is Evicted", PodEvicted),
+		builtInKubeletRule(nodePressureRule{}, RuleFamilyNode, "report active Node memory, disk, or PID pressure conditions", NodePressure),
+		builtInKubeletRule(podEvictedRule{}, RuleFamilyNode, "report a Pod whose terminal reason is Evicted", PodEvicted),
 	}
 }
 

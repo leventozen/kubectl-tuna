@@ -18,6 +18,13 @@ official stable endpoints and checks image availability and pinned digests
 through the read-only container registry API. This maintenance check requires
 network access; Tuna's normal diagnostic execution remains offline.
 
+The same reviewed minor window applies to declared rule version sources, not
+only the API server. Every rule checks the API server; rules that interpret
+kubelet-produced status or Events also validate all related Node kubelet
+versions. Mixed kubelet minors are accepted when each is inside the window and
+no newer than the API server. Missing, malformed, newer, or unreviewed kubelet
+versions skip only those kubelet-dependent rules and make health `unknown`.
+
 Every network operation in the maintenance check is bounded. The global stable
 release detects an unreviewed new minor, lifecycle metadata detects an expired
 maintenance branch, and per-minor stable endpoints detect patch drift. Each

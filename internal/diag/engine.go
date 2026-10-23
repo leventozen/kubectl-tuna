@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"sort"
 
+	corev1 "k8s.io/api/core/v1"
+	utilversion "k8s.io/apimachinery/pkg/util/version"
+
 	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
@@ -88,13 +91,8 @@ func (e *Engine) Evaluate(g *graph.Graph) *Result {
 		switch {
 		case versionUnavailable:
 			skipReason = "Kubernetes API server version is unavailable"
-		case g.HasKubernetesVersion() && !metadata.Compatibility.supports(g.Cluster):
-			skipReason = fmt.Sprintf(
-				"cluster %s is outside the reviewed range %s-%s",
-				g.Cluster.KubernetesVersion,
-				metadata.Compatibility.Min,
-				metadata.Compatibility.Max,
-			)
+		case g.HasKubernetesVersion():
+			skipReason = compatibilitySkipReason(g, metadata)
 		}
 		if skipReason != "" {
 			ruleSummary.Skipped = append(ruleSummary.Skipped, RuleSkip{
@@ -152,7 +150,7 @@ func (e *Engine) Evaluate(g *graph.Graph) *Result {
 		res.Warnings = append(res.Warnings, graph.CollectionIssue{
 			Source: graph.SourceRuleCompatibility, Resource: g.Focus,
 			Message: fmt.Sprintf(
-				"%d rule(s) were not evaluated for Kubernetes %s; inspect JSON rules.skipped for details",
+				"%d rule(s) were not evaluated because required Kubernetes component compatibility was not established for %s; inspect JSON rules.skipped for details",
 				len(ruleSummary.Skipped), g.Cluster.KubernetesVersion,
 			),
 			AffectsHealth: true,
@@ -184,6 +182,56 @@ func (e *Engine) Evaluate(g *graph.Graph) *Result {
 		}
 	}
 	return res
+}
+
+func compatibilitySkipReason(g *graph.Graph, metadata RuleMetadata) string {
+	compatibility := metadata.Compatibility
+	if !compatibility.supports(g.Cluster.Major, g.Cluster.Minor) {
+		return fmt.Sprintf(
+			"API server %s is outside the reviewed range %s-%s",
+			g.Cluster.KubernetesVersion,
+			compatibility.Min,
+			compatibility.Max,
+		)
+	}
+	if !metadata.usesVersionSource(VersionSourceKubelet) {
+		return ""
+	}
+	return kubeletCompatibilitySkipReason(g, compatibility)
+}
+
+// kubeletCompatibilitySkipReason validates every related Node because a rule
+// is evaluated once over the whole focused graph. Evaluating only the subset
+// of Pods on reviewed kubelets would make the rule summary look complete while
+// silently dropping evidence from the same inspection.
+func kubeletCompatibilitySkipReason(g *graph.Graph, compatibility KubernetesCompatibility) string {
+	server := utilversion.MajorMinor(g.Cluster.Major, g.Cluster.Minor)
+	for _, graphNode := range g.NodesOfKind("Node") {
+		node, ok := graphNode.Object.(*corev1.Node)
+		if !ok || node.Status.NodeInfo.KubeletVersion == "" {
+			return fmt.Sprintf("kubelet version for %s is unavailable", graphNode.Ref)
+		}
+
+		raw := node.Status.NodeInfo.KubeletVersion
+		version, err := utilversion.ParseGeneric(raw)
+		if err != nil || version.Major() == 0 {
+			return fmt.Sprintf("kubelet version %q for %s is not usable", raw, graphNode.Ref)
+		}
+		minor := utilversion.MajorMinor(version.Major(), version.Minor())
+		if server.LessThan(minor) {
+			return fmt.Sprintf(
+				"kubelet %s for %s is newer than API server %s",
+				raw, graphNode.Ref, g.Cluster.KubernetesVersion,
+			)
+		}
+		if !compatibility.supports(version.Major(), version.Minor()) {
+			return fmt.Sprintf(
+				"kubelet %s for %s is outside the reviewed range %s-%s",
+				raw, graphNode.Ref, compatibility.Min, compatibility.Max,
+			)
+		}
+	}
+	return ""
 }
 
 // replicaOwners returns the exact Deployment owner for Pod findings when the

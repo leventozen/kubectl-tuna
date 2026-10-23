@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
@@ -39,13 +41,23 @@ func registration(rule Rule, min, max string) RuleRegistration {
 	return RuleRegistration{
 		Rule: rule,
 		Metadata: RuleMetadata{
-			ID:            rule.ID(),
-			Family:        RuleFamilyTraffic,
-			Description:   "test rule",
-			FindingTypes:  []FindingType{FindingType(rule.ID())},
-			Compatibility: KubernetesCompatibility{Min: min, Max: max},
+			ID:             rule.ID(),
+			Family:         RuleFamilyTraffic,
+			Description:    "test rule",
+			FindingTypes:   []FindingType{FindingType(rule.ID())},
+			Compatibility:  KubernetesCompatibility{Min: min, Max: max},
+			VersionSources: []KubernetesVersionSource{VersionSourceAPIServer},
 		},
 	}
+}
+
+func addKubeletNode(g *graph.Graph, name, version string) {
+	g.AddNode(graph.ResourceRef{Kind: "Node", Name: name}, &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Status: corev1.NodeStatus{NodeInfo: corev1.NodeSystemInfo{
+			KubeletVersion: version,
+		}},
+	})
 }
 
 func TestRegistryRejectsDuplicateFindingTypeOwners(t *testing.T) {
@@ -96,12 +108,70 @@ func TestDefaultRegistryDeclaresEveryBuiltInFindingType(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
+func TestDefaultRegistryDeclaresKubeletVersionSources(t *testing.T) {
+	registry, err := NewRegistry(DefaultRuleRegistrations())
+	require.NoError(t, err)
+
+	kubeletRules := map[string]bool{
+		"container-oomkilled":     true,
+		"crashloop-backoff":       true,
+		"image-pull-failure":      true,
+		"node-pressure":           true,
+		"pod-evicted":             true,
+		"readiness-probe-failing": true,
+	}
+	for _, metadata := range registry.Metadata() {
+		require.Contains(t, metadata.VersionSources, VersionSourceAPIServer, metadata.ID)
+		require.Equal(t, kubeletRules[metadata.ID], metadata.usesVersionSource(VersionSourceKubelet), metadata.ID)
+	}
+}
+
 func TestRegistryRejectsInvalidCompatibilityRange(t *testing.T) {
 	calls := 0
 	_, err := NewRegistry([]RuleRegistration{
 		registration(countingRule{id: "bad-range", calls: &calls}, "1.36", "1.34"),
 	})
 	require.ErrorContains(t, err, "maximum Kubernetes version 1.34 is lower than minimum 1.36")
+}
+
+func TestRegistryRejectsInvalidVersionSources(t *testing.T) {
+	tests := []struct {
+		name    string
+		sources []KubernetesVersionSource
+		want    string
+	}{
+		{name: "empty", want: "no Kubernetes version sources declared"},
+		{name: "missing API server", sources: []KubernetesVersionSource{VersionSourceKubelet}, want: `must include "api-server"`},
+		{name: "duplicate", sources: []KubernetesVersionSource{VersionSourceAPIServer, VersionSourceAPIServer}, want: `duplicate Kubernetes version source "api-server"`},
+		{name: "unknown", sources: []KubernetesVersionSource{VersionSourceAPIServer, "controller"}, want: `unknown Kubernetes version source "controller"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			registered := registration(countingRule{id: "version-source", calls: &calls}, "1.34", "1.37")
+			registered.Metadata.VersionSources = tt.sources
+			_, err := NewRegistry([]RuleRegistration{registered})
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
+}
+
+func TestRegistryNormalizesAndCopiesVersionSources(t *testing.T) {
+	calls := 0
+	registered := registration(countingRule{id: "version-source", calls: &calls}, "1.34", "1.37")
+	registered.Metadata.VersionSources = []KubernetesVersionSource{VersionSourceKubelet, VersionSourceAPIServer}
+	registry, err := NewRegistry([]RuleRegistration{registered})
+	require.NoError(t, err)
+
+	registered.Metadata.VersionSources[0] = "mutated"
+	metadata := registry.Metadata()
+	require.Equal(t, []KubernetesVersionSource{VersionSourceAPIServer, VersionSourceKubelet}, metadata[0].VersionSources)
+
+	metadata[0].VersionSources[0] = "mutated-again"
+	require.Equal(t,
+		[]KubernetesVersionSource{VersionSourceAPIServer, VersionSourceKubelet},
+		registry.Metadata()[0].VersionSources,
+	)
 }
 
 func TestEngineEvaluatesRuleInsideReviewedRange(t *testing.T) {
@@ -119,6 +189,82 @@ func TestEngineEvaluatesRuleInsideReviewedRange(t *testing.T) {
 	require.Equal(t, 1, result.Rules.Evaluated)
 	require.Empty(t, result.Rules.Skipped)
 	require.Equal(t, HealthOK, result.Health)
+}
+
+func TestEngineEvaluatesKubeletRuleAcrossReviewedMixedVersions(t *testing.T) {
+	serverCalls, kubeletCalls := 0, 0
+	serverRule := registration(countingRule{id: "server-state", calls: &serverCalls}, "1.34", "1.37")
+	kubeletRule := registration(countingRule{id: "kubelet-state", calls: &kubeletCalls}, "1.34", "1.37")
+	kubeletRule.Metadata.VersionSources = append(kubeletRule.Metadata.VersionSources, VersionSourceKubelet)
+	registry, err := NewRegistry([]RuleRegistration{serverRule, kubeletRule})
+	require.NoError(t, err)
+
+	g := graph.New(graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"})
+	require.NoError(t, g.SetKubernetesVersion("v1.37.1"))
+	addKubeletNode(g, "new-node", "v1.37.1")
+	addKubeletNode(g, "old-node", "v1.34.12")
+	result := NewEngineWithRegistry(registry).Evaluate(g)
+
+	require.Equal(t, 1, serverCalls)
+	require.Equal(t, 1, kubeletCalls)
+	require.Equal(t, 2, result.Rules.Evaluated)
+	require.Empty(t, result.Rules.Skipped)
+	require.Equal(t, HealthOK, result.Health)
+}
+
+func TestEngineSkipsOnlyKubeletRulesForUnreviewedKubelet(t *testing.T) {
+	serverCalls, kubeletCalls := 0, 0
+	serverRule := registration(countingRule{id: "server-state", calls: &serverCalls}, "1.34", "1.37")
+	kubeletRule := registration(countingRule{id: "kubelet-state", calls: &kubeletCalls}, "1.34", "1.37")
+	kubeletRule.Metadata.VersionSources = append(kubeletRule.Metadata.VersionSources, VersionSourceKubelet)
+	registry, err := NewRegistry([]RuleRegistration{serverRule, kubeletRule})
+	require.NoError(t, err)
+
+	g := graph.New(graph.ResourceRef{Kind: "Deployment", Namespace: "ns", Name: "api"})
+	require.NoError(t, g.SetKubernetesVersion("v1.37.1"))
+	addKubeletNode(g, "old-node", "v1.33.17")
+	result := NewEngineWithRegistry(registry).Evaluate(g)
+
+	require.Equal(t, 1, serverCalls)
+	require.Zero(t, kubeletCalls)
+	require.Equal(t, 1, result.Rules.Evaluated)
+	require.Len(t, result.Rules.Skipped, 1)
+	require.Equal(t, "kubelet-state", result.Rules.Skipped[0].ID)
+	require.Contains(t, result.Rules.Skipped[0].Reason, "outside the reviewed range 1.34-1.37")
+	require.Equal(t, HealthUnknown, result.Health)
+	require.True(t, result.Partial)
+}
+
+func TestEngineRejectsUnusableKubeletCompatibilityEvidence(t *testing.T) {
+	tests := []struct {
+		name           string
+		serverVersion  string
+		kubeletVersion string
+		wantReason     string
+	}{
+		{name: "missing", serverVersion: "v1.37.1", wantReason: "is unavailable"},
+		{name: "unparseable", serverVersion: "v1.37.1", kubeletVersion: "development", wantReason: "is not usable"},
+		{name: "newer than API server", serverVersion: "v1.36.5", kubeletVersion: "v1.37.1", wantReason: "is newer than API server v1.36.5"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := 0
+			registered := registration(countingRule{id: "kubelet-state", calls: &calls}, "1.34", "1.37")
+			registered.Metadata.VersionSources = append(registered.Metadata.VersionSources, VersionSourceKubelet)
+			registry, err := NewRegistry([]RuleRegistration{registered})
+			require.NoError(t, err)
+
+			g := graph.New(graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"})
+			require.NoError(t, g.SetKubernetesVersion(tt.serverVersion))
+			addKubeletNode(g, "worker", tt.kubeletVersion)
+			result := NewEngineWithRegistry(registry).Evaluate(g)
+
+			require.Zero(t, calls)
+			require.Len(t, result.Rules.Skipped, 1)
+			require.Contains(t, result.Rules.Skipped[0].Reason, tt.wantReason)
+			require.Equal(t, HealthUnknown, result.Health)
+		})
+	}
 }
 
 func TestEngineSkipsRuleOutsideReviewedRange(t *testing.T) {

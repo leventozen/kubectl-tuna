@@ -3,6 +3,8 @@ kind: Node
 metadata:
   name: worker-1
 status:
+  nodeInfo:
+    kubeletVersion: v1.36.2
   conditions:
     - type: MemoryPressure
       status: "True"

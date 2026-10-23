@@ -223,7 +223,10 @@ upstream patches are recorded separately if matching Kind images are not yet
 available. The [compatibility maintenance checklist](docs/kubernetes-compatibility.md)
 defines how patch and minor changes are reviewed. The provisional support gate
 remains open for corpus precision, environment diversity, and external-operator
-validation.
+validation. Rules that interpret kubelet-produced status or Events also check
+every related Node's kubelet version. Mixed kubelet minors inside the reviewed
+window are allowed; unavailable, newer-than-server, or unreviewed kubelets skip
+only those rules and make the result explicitly `unknown`.
 
 `make corpus` runs the machine-readable seed-corpus contract. Its current eight
 snapshots are author-constructed fake-client fixtures, not real-cluster

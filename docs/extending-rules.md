@@ -16,7 +16,8 @@ Each built-in rule implements `diag.Rule` and is registered with immutable
 metadata in [`internal/diag/rules_common.go`](../internal/diag/rules_common.go).
 [`internal/diag/registry.go`](../internal/diag/registry.go) rejects:
 
-- a missing implementation, ID, family, description, or Kubernetes range;
+- a missing implementation, ID, family, description, Kubernetes range, or
+  version source;
 - a metadata ID that differs from the implementation ID;
 - duplicate rule IDs;
 - missing finding-type declarations or two rules claiming the same type;
@@ -25,9 +26,11 @@ metadata in [`internal/diag/rules_common.go`](../internal/diag/rules_common.go).
 The engine records the rule ID on every finding and discards a finding whose
 type was not declared by that rule, making the lost coverage visible as
 health-blocking incomplete evidence. Before executing a rule it
-compares the discovered API server minor version with the rule's inclusive
-reviewed range. A rule outside that range is skipped and named in JSON under
-`rules.skipped`; it is not optimistically executed against unknown semantics.
+compares every declared component version source with the rule's inclusive
+reviewed range. Every rule requires the API server version; rules that consume
+kubelet-produced evidence also require the related Node kubelet versions. A
+rule outside that range is skipped and named in JSON under `rules.skipped`; it
+is not optimistically executed against unknown semantics.
 
 The current built-ins declare Kubernetes 1.34 through 1.37. This is a reviewed
 semantic window, not a support guarantee. Real-cluster e2e coverage across the
@@ -109,11 +112,14 @@ The API server minor version is only one compatibility input:
 - events and implementation-specific messages can differ by component or
   runtime.
 
-Future rule metadata therefore needs capability requirements in addition to a
-minor range: required API group/versions, required fields or feature state, and
-possibly component scope such as kubelet version. A rule must become
-`not-applicable` or `unknown` when those requirements cannot be established; it
-must not silently assume them.
+Built-in rule metadata now declares whether compatibility depends only on the
+API server or also on related Node kubelet versions. Kubelet-dependent rules
+fail closed when a related version is unavailable, newer than the API server,
+or outside the reviewed range; mixed in-range kubelets are accepted. Future
+metadata still needs broader capability requirements such as required API
+group/versions, fields, feature state, and distribution behavior. A rule must
+become `not-applicable` or `unknown` when those requirements cannot be
+established; it must not silently assume them.
 
 The Kubernetes project maintains the three latest minor branches and documents
 component skew separately. See the official

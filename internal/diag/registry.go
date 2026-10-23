@@ -5,8 +5,6 @@ import (
 	"sort"
 
 	utilversion "k8s.io/apimachinery/pkg/util/version"
-
-	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
 // RuleFamily groups rules for documentation and future rule-pack discovery.
@@ -19,6 +17,17 @@ const (
 	RuleFamilyScheduling RuleFamily = "scheduling"
 	RuleFamilyNode       RuleFamily = "node"
 	RuleFamilyRollout    RuleFamily = "rollout"
+)
+
+// KubernetesVersionSource identifies a component whose reported version must
+// be inside a rule's reviewed compatibility window before the rule can run.
+// API server compatibility is required for every rule; rules that interpret
+// kubelet-produced status or events additionally declare the kubelet source.
+type KubernetesVersionSource string
+
+const (
+	VersionSourceAPIServer KubernetesVersionSource = "api-server"
+	VersionSourceKubelet   KubernetesVersionSource = "kubelet"
 )
 
 // KubernetesCompatibility is the inclusive Kubernetes minor-version window
@@ -44,8 +53,8 @@ func (c KubernetesCompatibility) validate() error {
 	return nil
 }
 
-func (c KubernetesCompatibility) supports(cluster graph.ClusterInfo) bool {
-	want := utilversion.MajorMinor(cluster.Major, cluster.Minor)
+func (c KubernetesCompatibility) supports(major, minor uint) bool {
+	want := utilversion.MajorMinor(major, minor)
 	min := utilversion.MustParseMajorMinor(c.Min)
 	max := utilversion.MustParseMajorMinor(c.Max)
 	return !want.LessThan(min) && !max.LessThan(want)
@@ -55,11 +64,12 @@ func (c KubernetesCompatibility) supports(cluster graph.ClusterInfo) bool {
 // checked without executing the rule. This is an internal pre-release
 // contract; it is not yet a stable third-party plugin API.
 type RuleMetadata struct {
-	ID            string                  `json:"id"`
-	Family        RuleFamily              `json:"family"`
-	Description   string                  `json:"description"`
-	FindingTypes  []FindingType           `json:"findingTypes"`
-	Compatibility KubernetesCompatibility `json:"kubernetes"`
+	ID             string                    `json:"id"`
+	Family         RuleFamily                `json:"family"`
+	Description    string                    `json:"description"`
+	FindingTypes   []FindingType             `json:"findingTypes"`
+	Compatibility  KubernetesCompatibility   `json:"kubernetes"`
+	VersionSources []KubernetesVersionSource `json:"versionSources"`
 }
 
 // RuleRegistration binds executable rule logic to reviewable metadata.
@@ -84,6 +94,10 @@ func NewRegistry(registrations []RuleRegistration) (*Registry, error) {
 	copyOf := append([]RuleRegistration(nil), registrations...)
 	for i, registration := range copyOf {
 		copyOf[i].Metadata.FindingTypes = append([]FindingType(nil), registration.Metadata.FindingTypes...)
+		copyOf[i].Metadata.VersionSources = append([]KubernetesVersionSource(nil), registration.Metadata.VersionSources...)
+		sort.Slice(copyOf[i].Metadata.VersionSources, func(left, right int) bool {
+			return copyOf[i].Metadata.VersionSources[left] < copyOf[i].Metadata.VersionSources[right]
+		})
 		registration = copyOf[i]
 		if registration.Rule == nil {
 			return nil, fmt.Errorf("rule registration %d has no implementation", i)
@@ -120,8 +134,33 @@ func NewRegistry(registrations []RuleRegistration) (*Registry, error) {
 		if err := metadata.Compatibility.validate(); err != nil {
 			return nil, fmt.Errorf("rule %q: %w", metadata.ID, err)
 		}
+		if err := validateVersionSources(metadata.VersionSources); err != nil {
+			return nil, fmt.Errorf("rule %q: %w", metadata.ID, err)
+		}
 	}
 	return &Registry{registrations: copyOf}, nil
+}
+
+func validateVersionSources(sources []KubernetesVersionSource) error {
+	if len(sources) == 0 {
+		return fmt.Errorf("no Kubernetes version sources declared")
+	}
+	seen := make(map[KubernetesVersionSource]struct{}, len(sources))
+	for _, source := range sources {
+		switch source {
+		case VersionSourceAPIServer, VersionSourceKubelet:
+		default:
+			return fmt.Errorf("unknown Kubernetes version source %q", source)
+		}
+		if _, exists := seen[source]; exists {
+			return fmt.Errorf("duplicate Kubernetes version source %q", source)
+		}
+		seen[source] = struct{}{}
+	}
+	if _, exists := seen[VersionSourceAPIServer]; !exists {
+		return fmt.Errorf("Kubernetes version sources must include %q", VersionSourceAPIServer)
+	}
+	return nil
 }
 
 func knownRuleFamily(family RuleFamily) bool {
@@ -136,6 +175,15 @@ func knownRuleFamily(family RuleFamily) bool {
 func (m RuleMetadata) declares(findingType FindingType) bool {
 	for _, declared := range m.FindingTypes {
 		if declared == findingType {
+			return true
+		}
+	}
+	return false
+}
+
+func (m RuleMetadata) usesVersionSource(source KubernetesVersionSource) bool {
+	for _, declared := range m.VersionSources {
+		if declared == source {
 			return true
 		}
 	}
@@ -157,6 +205,7 @@ func (r *Registry) Registrations() []RuleRegistration {
 	out := append([]RuleRegistration(nil), r.registrations...)
 	for i := range out {
 		out[i].Metadata.FindingTypes = append([]FindingType(nil), out[i].Metadata.FindingTypes...)
+		out[i].Metadata.VersionSources = append([]KubernetesVersionSource(nil), out[i].Metadata.VersionSources...)
 	}
 	return out
 }
@@ -168,6 +217,7 @@ func (r *Registry) Metadata() []RuleMetadata {
 	for _, registration := range r.registrations {
 		metadata := registration.Metadata
 		metadata.FindingTypes = append([]FindingType(nil), metadata.FindingTypes...)
+		metadata.VersionSources = append([]KubernetesVersionSource(nil), metadata.VersionSources...)
 		out = append(out, metadata)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })

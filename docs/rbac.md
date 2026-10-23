@@ -35,7 +35,7 @@ is documented in [`temporal-integrity.md`](temporal-integrity.md).
 | apps | `deployments` | `get` | fetch a Deployment focus or resolve a Pod owner |
 | apps | `replicasets` | `get`, `list` | resolve Deployment→ReplicaSet→Pod ownership |
 | discovery.k8s.io | `endpointslices` | `list` | inspect endpoint readiness for a Service |
-| core, cluster-scoped | `nodes` | `get` | inspect pressure conditions for the exact Node hosting a collected Pod |
+| core, cluster-scoped | `nodes` | `get` | inspect pressure conditions and establish the kubelet version for the exact Node hosting a collected Pod |
 
 Tuna does not request create, update, patch, delete, watch, exec, logs, metrics,
 or port-forward access.
@@ -182,6 +182,10 @@ supports a reliable query.
   window into a diagnosis.
 - Failure to determine the API server version skips version-scoped rules and is
   health-blocking incomplete evidence.
+- Failure to read or parse a related Node's kubelet version skips only rules
+  that interpret kubelet-produced evidence and is health-blocking incomplete
+  evidence. The same fail-closed behavior applies when a kubelet is newer than
+  the API server or outside the rule's reviewed range.
 - EndpointSlice failure for a Service focus makes health `unknown` because
   endpoint health cannot be established.
 - Failure to discover or enrich related Pods, ReplicaSets, Services, Nodes,

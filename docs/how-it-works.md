@@ -85,10 +85,15 @@ reviewed and advanced deliberately. See the Kubernetes
 [version skew policy](https://kubernetes.io/releases/version-skew-policy/).
 
 Server minor version is also not the whole environment. Feature gates,
-available APIs, distribution behavior, and kubelet versions can differ. Rules
-that eventually depend on those facts will need explicit capability or
-component-version requirements; they cannot infer them from the server version
-alone.
+available APIs, distribution behavior, and kubelet versions can differ. Rule
+metadata therefore declares which component versions its evidence depends on.
+Rules that interpret kubelet-produced status or Events require every related
+Node's kubelet version to be readable, no newer than the API server, and inside
+the rule's reviewed window. Mixed kubelet minors inside that window are
+accepted; a missing, invalid, newer, or unreviewed kubelet skips only the
+kubelet-dependent rules and makes the result `unknown`. Other capability and
+distribution requirements remain future work and cannot be inferred from the
+server version alone.
 
 ### 4. Build a directed, typed graph
 
