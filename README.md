@@ -274,6 +274,15 @@ runtimes, distribution label, and Tuna JSON results. Assertions remain in the
 executable e2e contract. These are project-authored live reproductions, not
 field-validation cases.
 
+A reviewed four-minor baseline set from the green scenario suite through
+StatefulSet and Job is preserved under
+[`testdata/compatibility/baselines/`](testdata/compatibility/baselines/). Its
+index binds every minimized result to the exact source commit, workflow run,
+artifact name, and artifact digest. Local validation rejects missing,
+unindexed, identity-bearing, or cross-minor root-outcome drift. This historical
+set does not validate the newer CronJob scenario and is not a Kubernetes
+support claim.
+
 ## Current limitations
 
 - Service, Deployment, StatefulSet, Job, CronJob, and Pod are the valid inspection entry points.
@@ -286,8 +295,9 @@ field-validation cases.
   rather than guessing. Tuna does not infer missed schedules or parse cron
   expressions against wall-clock time.
 - Built-in rules currently have a reviewed Kubernetes 1.34–1.37 window. This
-  is not a support guarantee until the multi-version real-cluster gate passes;
-  other minors cause version-scoped rules to be skipped.
+  is not a support guarantee: the green matrix exercises project-authored
+  scenarios, while environment diversity and independent operator evidence
+  remain open. Other minors cause version-scoped rules to be skipped.
 - Third-party rule packs are not loaded yet. New rules currently require an
   in-tree contribution and the same review/tests as built-ins.
 - Some Kubernetes discovery operations are namespace-scoped. The retained

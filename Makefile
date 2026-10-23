@@ -23,7 +23,8 @@ vet:
 verify: test vet
 	bash -n examples/e2e.sh scripts/*.sh
 	bash ./scripts/test-e2e-selection.sh
-	python3 -m unittest scripts/test_summarize_e2e_baseline.py
+	python3 scripts/validate-e2e-baselines.py testdata/compatibility/baselines
+	python3 -m unittest scripts/test_summarize_e2e_baseline.py scripts/test_validate_e2e_baselines.py
 
 # Local collector cost as namespace Service count grows. This benchmark uses
 # client-go's fake tracker, so it measures decode/filter/graph overhead rather
@@ -59,7 +60,8 @@ e2e-selection-test:
 	bash ./scripts/test-e2e-selection.sh
 
 e2e-baseline-test:
-	python3 -m unittest scripts/test_summarize_e2e_baseline.py
+	python3 scripts/validate-e2e-baselines.py testdata/compatibility/baselines
+	python3 -m unittest scripts/test_summarize_e2e_baseline.py scripts/test_validate_e2e_baselines.py
 
 # Requires network access. Checks upstream patch and Kind image drift.
 check-kubernetes-window:

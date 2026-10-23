@@ -9,7 +9,7 @@ Tuna keeps three claims separate:
 4. `testedPatch` and `nodeImage` identify the exact digest-pinned Kind image
    exercised by CI.
 
-The machine-readable source for all three is
+The machine-readable source for all four is
 [`testdata/compatibility/kubernetes-window.json`](../testdata/compatibility/kubernetes-window.json).
 CI derives its e2e matrix from this manifest. A Go contract test keeps the
 manifest aligned with every built-in rule's fail-closed compatibility range.
@@ -17,6 +17,35 @@ manifest aligned with every built-in rule's fail-closed compatibility range.
 official stable endpoints and checks image availability and pinned digests
 through the read-only container registry API. This maintenance check requires
 network access; Tuna's normal diagnostic execution remains offline.
+
+## Durable compatibility evidence
+
+CI artifacts are intentionally rich but expire. Reviewed, identity-minimized
+sets are preserved under
+[`testdata/compatibility/baselines/`](../testdata/compatibility/baselines/).
+Each set is immutable historical evidence: its index records the exact source
+commit, workflow run, artifact names, and artifact digests, while each summary
+retains the API server build, digest-pinned Kind image, anonymous Node runtime
+shape, and diagnostic outcomes. A set proves only the scenarios present at its
+source commit; it does not automatically validate later rules or scenarios.
+
+`make e2e-baseline-test` validates the committed inventory and provenance. It
+requires health, partial state, root types, warnings, and rule execution to be
+consistent across the versions in one set. Non-root finding differences are
+retained for inspection because controller timing and surfaced symptoms can
+legitimately vary without changing the diagnosis. Resource names, namespaces,
+UIDs, and cluster or Node names are forbidden.
+
+To promote another set:
+
+1. Select an already-successful full remote matrix; do not start a hidden local
+   full run merely to create summaries.
+2. Verify that every artifact belongs to the same clean source commit and
+   record the workflow artifact digest returned by GitHub.
+3. Generate each summary with `scripts/summarize-e2e-baseline.py`, add a new
+   immutable set to the index, and retain older sets when they remain useful.
+4. Run `make e2e-baseline-test`, then review any cross-version difference as
+   diagnostic evidence rather than normalizing it away.
 
 The same reviewed minor window applies to declared rule version sources, not
 only the API server. Every rule checks the API server; rules that interpret
@@ -69,8 +98,8 @@ that it cannot actually run.
    matrix validates the project's scenarios only; it is not a broad support
    guarantee.
 5. Update README and roadmap wording if the provisional window changes.
-6. Keep selected compatibility evidence beyond ephemeral CI retention before
-   treating the window as durable validation.
+6. Promote a selected compatibility baseline set beyond ephemeral CI retention
+   before treating a newly tested window as durable historical validation.
 
 If a non-EOL minor has no usable official Kind image, keep the discrepancy
 visible and decide explicitly whether to add another test distribution. Do not
@@ -123,6 +152,8 @@ minor before its upstream end of life. This is not a blanket client compatibilit
 claim: adding a field or API introduced after 1.36 requires a separate dependency
 decision and compatibility test.
 
-The review establishes eligibility for the matrix, not support. The full e2e
-contract must still pass on the exact 1.34.11, 1.35.8, 1.36.4, and 1.37.0 images
-before the window advance is considered mechanically validated.
+The review established eligibility for the matrix, not support. The full e2e
+contract through StatefulSet and Job passed on the exact 1.34.11, 1.35.8,
+1.36.4, and 1.37.0 images, and its minimized evidence is preserved in the
+durable baseline set. Diagnostics added later, beginning with CronJob, require
+their own full remote observation before joining that mechanical validation.

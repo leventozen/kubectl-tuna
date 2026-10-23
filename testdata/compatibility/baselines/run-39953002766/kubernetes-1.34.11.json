@@ -1,0 +1,348 @@
+{
+  "capturedAt": "2026-10-23T12:26:09.901055Z",
+  "cases": [
+    {
+      "findingTypes": [
+        "deployment-unavailable",
+        "pod-not-ready",
+        "readiness-probe-failing",
+        "readiness-probe-port-mismatch",
+        "service-no-ready-endpoints"
+      ],
+      "focusKind": "Service",
+      "health": "degraded",
+      "id": "broken-readiness-port-broken",
+      "partial": false,
+      "rootCauseTypes": [
+        "readiness-probe-port-mismatch"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [],
+      "focusKind": "Service",
+      "health": "healthy",
+      "id": "broken-readiness-port-recovered",
+      "partial": false,
+      "rootCauseTypes": [],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [
+        "deployment-unavailable",
+        "pod-not-ready",
+        "pod-unschedulable"
+      ],
+      "focusKind": "Deployment",
+      "health": "degraded",
+      "id": "failed-scheduling",
+      "partial": false,
+      "rootCauseTypes": [
+        "pod-unschedulable"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [],
+      "focusKind": "Service",
+      "health": "healthy",
+      "id": "healthy-service",
+      "partial": false,
+      "rootCauseTypes": [],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [
+        "hpa-metrics-unavailable"
+      ],
+      "focusKind": "Deployment",
+      "health": "healthy",
+      "id": "hpa-metrics-unavailable",
+      "partial": false,
+      "rootCauseTypes": [],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [],
+      "focusKind": "Service",
+      "health": "unknown",
+      "id": "incomplete-rbac",
+      "partial": true,
+      "rootCauseTypes": [],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": [
+        "endpointslices"
+      ]
+    },
+    {
+      "findingTypes": [
+        "container-oomkilled",
+        "job-failed",
+        "pod-not-ready"
+      ],
+      "focusKind": "Job",
+      "health": "degraded",
+      "id": "job-failed",
+      "partial": false,
+      "rootCauseTypes": [
+        "container-oomkilled"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [
+        "container-oomkilled",
+        "deployment-unavailable",
+        "image-pull-failure",
+        "pod-not-ready"
+      ],
+      "focusKind": "Deployment",
+      "health": "degraded",
+      "id": "multi-container-isolation",
+      "partial": false,
+      "rootCauseTypes": [
+        "image-pull-failure"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [
+        "deployment-unavailable",
+        "image-pull-failure",
+        "pod-not-ready",
+        "pod-not-ready",
+        "readiness-probe-failing",
+        "rollout-stuck"
+      ],
+      "focusKind": "Deployment",
+      "health": "degraded",
+      "id": "multiple-replicaset-rollout",
+      "partial": false,
+      "rootCauseTypes": [
+        "image-pull-failure",
+        "readiness-probe-failing"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [
+        "deployment-unavailable",
+        "deployment-unavailable",
+        "pod-not-ready",
+        "readiness-probe-failing",
+        "readiness-probe-port-mismatch"
+      ],
+      "focusKind": "Service",
+      "health": "healthy",
+      "id": "multiple-workloads-one-service",
+      "partial": false,
+      "rootCauseTypes": [
+        "readiness-probe-port-mismatch"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [
+        "container-oomkilled",
+        "deployment-unavailable",
+        "pod-not-ready"
+      ],
+      "focusKind": "Deployment",
+      "health": "degraded",
+      "id": "oomkilled",
+      "partial": false,
+      "rootCauseTypes": [
+        "container-oomkilled"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [
+        "deployment-unavailable",
+        "persistent-volume-claim-pending",
+        "pod-not-ready",
+        "pod-unschedulable"
+      ],
+      "focusKind": "Deployment",
+      "health": "degraded",
+      "id": "pending-pvc",
+      "partial": false,
+      "rootCauseTypes": [
+        "persistent-volume-claim-pending"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [
+        "service-no-ready-endpoints",
+        "service-selector-no-pods"
+      ],
+      "focusKind": "Service",
+      "health": "degraded",
+      "id": "service-selector-mismatch",
+      "partial": false,
+      "rootCauseTypes": [
+        "service-selector-no-pods"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [
+        "image-pull-failure",
+        "pod-not-ready"
+      ],
+      "focusKind": "Pod",
+      "health": "degraded",
+      "id": "stale-event-identity",
+      "partial": false,
+      "rootCauseTypes": [
+        "image-pull-failure"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    },
+    {
+      "findingTypes": [
+        "image-pull-failure",
+        "pod-not-ready",
+        "statefulset-unavailable"
+      ],
+      "focusKind": "StatefulSet",
+      "health": "degraded",
+      "id": "statefulset-unavailable",
+      "partial": false,
+      "rootCauseTypes": [
+        "image-pull-failure"
+      ],
+      "rules": {
+        "evaluated": 19,
+        "skippedIDs": [],
+        "suspended": false
+      },
+      "warningSources": []
+    }
+  ],
+  "evidenceClass": "live-reproduction",
+  "kubernetes": {
+    "apiServer": {
+      "buildDate": "2026-08-20T15:15:37Z",
+      "compiler": "gc",
+      "emulationMajor": "1",
+      "emulationMinor": "34",
+      "gitCommit": "3a634765b787dd069f7f714fa77d767cb7d43795",
+      "gitTreeState": "clean",
+      "gitVersion": "v1.34.11",
+      "goVersion": "go1.26.5",
+      "major": "1",
+      "minCompatibilityMajor": "1",
+      "minCompatibilityMinor": "33",
+      "minor": "34",
+      "platform": "linux/amd64"
+    },
+    "distribution": "kind",
+    "expectedVersion": "1.34.11",
+    "kindNodeImage": "kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d",
+    "nodes": [
+      {
+        "architecture": "amd64",
+        "containerRuntimeVersion": "containerd://2.3.4",
+        "kernelVersion": "6.17.0-1022-azure",
+        "kubeletVersion": "v1.34.11",
+        "operatingSystem": "linux",
+        "osImage": "Debian GNU/Linux 13 (trixie)"
+      }
+    ]
+  },
+  "schemaVersion": 1,
+  "suite": {
+    "full": true,
+    "selectedCases": [
+      "broken-readiness-port",
+      "healthy-service",
+      "incomplete-rbac",
+      "multiple-workloads-one-service",
+      "multi-container-isolation",
+      "stale-event-identity",
+      "multiple-replicaset-rollout",
+      "service-selector-mismatch",
+      "failed-scheduling",
+      "hpa-metrics-unavailable",
+      "pending-pvc",
+      "statefulset-unavailable",
+      "job-failed",
+      "oomkilled"
+    ]
+  },
+  "tuna": {
+    "goVersion": "go1.26.10",
+    "sourceCommit": "142cfd577f24a34eeb10e8449b8d68a83296822a"
+  }
+}

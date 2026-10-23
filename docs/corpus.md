@@ -45,14 +45,23 @@ Go toolchain, expected Kubernetes patch, and digest-pinned Kind image. A
 successful run emits `compatibility-baseline.json`: a deterministic summary of
 health, partial state, root types, finding types, warnings, and rule execution
 with resource and Node identities removed. Raw artifacts are retained for 30
-days; selected reviewed summaries can be committed under
-`testdata/compatibility/baselines/` for durable historical comparison.
+days. Selected reviewed summaries are committed under
+[`testdata/compatibility/baselines/`](../testdata/compatibility/baselines/) for
+durable historical comparison. The baseline index binds each summary to its
+exact source commit, workflow run, artifact name, and GitHub artifact digest;
+historical sets are never silently relabeled as evidence for newer scenarios.
 
 The summary generator rejects dirty Tuna source trees, unpinned Kind images,
 API-server version mismatches, inconsistent root markers, and malformed case
-results. Run its focused tests with `make e2e-baseline-test`. A summary remains
-project-authored live-reproduction evidence; compacting it does not turn it
-into independent field evidence or a replayable corpus case.
+results. The committed-set validator also rejects unindexed files, resource
+identity keys, internal source/version provenance mismatches, and cross-minor
+drift in health, partial state, roots, warnings, or rule execution. Non-root
+finding differences remain visible instead of being erased: for example, the
+preserved 1.37 OOM reproduction also observed `crashloop-backoff` while every
+minor retained the same root diagnosis. Run both validators' focused tests with
+`make e2e-baseline-test`. A summary remains project-authored
+live-reproduction evidence; compacting it does not turn it into independent
+field evidence or a replayable corpus case.
 
 For local real-cluster work, list scenarios with `make e2e-list` and run only
 the affected one with `make e2e E2E_CASE=<case>`. `make e2e-full` is reserved

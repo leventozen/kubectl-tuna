@@ -81,7 +81,8 @@ operators the author did not construct.
    next local real-cluster cycle. The normal agent loop must not pull Kind
    images or run the full E2E suite; it should select only affected scenarios.
    Full multi-version validation belongs in remote CI or an explicit milestone
-   run, and durable baselines should be promoted from that existing evidence.
+   run. The first durable four-minor baseline has been promoted from existing
+   evidence; future behavior changes still require their own remote observation.
 5. Prepare a friction-light evaluator path without actively recruiting yet:
    the minimal evaluator guide, `CONTRIBUTING.md`, structured diagnostic
    feedback form, and explicit Go toolchain policy are in place; local build
@@ -312,9 +313,13 @@ whether the model survives Kubernetes behavior it was not authored around.
   behavior being changed; and the full scenario × Kubernetes matrix only in
   remote CI or an explicit milestone run. Baseline promotion must reuse a
   successful full run instead of silently starting another one locally.
-- [ ] Preserve selected compatibility baselines beyond the 30-day CI artifact
-  lifetime. Ephemeral workflow artifacts improve debugging but are not a
-  durable validation corpus.
+- [x] Preserve selected compatibility baselines beyond the 30-day CI artifact
+  lifetime. The first immutable set records the green four-minor suite through
+  StatefulSet and Job with source, workflow, artifact-name, and artifact-digest
+  provenance. Local validation rejects identity leakage, missing or unindexed
+  files, and cross-minor drift in diagnostic root outcomes. It is historical
+  project-authored evidence, not proof for the newer CronJob scenario or an
+  independent field corpus.
 
 ### Gate B2 — Independent precision and usefulness (started internally)
 
