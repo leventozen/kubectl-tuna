@@ -13,8 +13,8 @@ For every live inspection, Tuna:
 2. records the focus resource's initial `resourceVersion` and `generation`;
 3. reads the focus resource again after related evidence is collected;
 4. suspends all rules if the focus UID/revision changed or the final read fails;
-5. suspends all rules when any collected Deployment or ReplicaSet has
-   `status.observedGeneration < metadata.generation`.
+5. suspends all rules when any collected Deployment, ReplicaSet, or StatefulSet
+   has `status.observedGeneration < metadata.generation`.
 
 These checks reject a transition that is proven from available structured
 state. They do not prove that every related Pod, Service, EndpointSlice, Event,
@@ -40,7 +40,7 @@ stability interval.
 That is stronger evidence, but it has material costs:
 
 - every API request and response payload is approximately doubled;
-- Deployment and Pod entry points repeat the namespace-wide Service LIST;
+- Deployment, StatefulSet, and Pod entry points repeat the namespace-wide Service LIST;
 - EndpointSlice LIST calls grow with the number of matching Services;
 - owner, Node, ConfigMap, and Event requests must also be repeated or the claim
   remains incomplete;
@@ -71,7 +71,7 @@ Tuna does not perform a blanket second pass or request `watch` permission.
 The default policy is:
 
 - hard-fail diagnostic evaluation on a changed or unverifiable focus;
-- hard-fail on stale collected Deployment/ReplicaSet controller generations;
+- hard-fail on stale collected Deployment/ReplicaSet/StatefulSet controller generations;
 - expose collection time bounds and focus revisions in JSON;
 - keep the non-atomic related-resource boundary explicit in README and output
   contract work;

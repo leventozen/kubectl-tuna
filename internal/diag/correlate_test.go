@@ -57,6 +57,28 @@ func TestCorrelationRequiresOwningDeployment(t *testing.T) {
 	require.Empty(t, unavailable.CausedBy)
 }
 
+func TestCorrelationRequiresOwningStatefulSet(t *testing.T) {
+	g := graph.New(graph.ResourceRef{Kind: "StatefulSet", Namespace: "ns", Name: "set-b"})
+	setA := graph.ResourceRef{Kind: "StatefulSet", Namespace: "ns", Name: "set-a"}
+	setB := graph.ResourceRef{Kind: "StatefulSet", Namespace: "ns", Name: "set-b"}
+	podA := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "set-a-0"}
+	podB := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "set-b-0"}
+	g.AddEdge(setA, podA, graph.EdgeOwns)
+	g.AddEdge(setB, podB, graph.EdgeOwns)
+
+	notReady := &Finding{Type: PodNotReady, Resource: podA}
+	unavailable := &Finding{Type: StatefulSetUnavailable, Resource: setB}
+	Correlate([]*Finding{notReady, unavailable}, g)
+
+	require.Empty(t, notReady.Causes)
+	require.Empty(t, unavailable.CausedBy)
+
+	unavailable.Resource = setA
+	Correlate([]*Finding{notReady, unavailable}, g)
+	require.Equal(t, []*Finding{unavailable}, notReady.Causes)
+	require.Equal(t, []*Finding{notReady}, unavailable.CausedBy)
+}
+
 func TestCorrelationRequiresSameContainer(t *testing.T) {
 	pod := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "multi"}
 	g := graph.New(pod)
@@ -227,6 +249,18 @@ func TestReplicaOwnersRequireExactDeploymentReplicaSetPodPath(t *testing.T) {
 	require.Equal(t, depB, owners["f-2"])
 	require.NotContains(t, owners, "f-3")
 	require.NotContains(t, owners, "f-4")
+}
+
+func TestReplicaOwnersAcceptDirectStatefulSetPodPath(t *testing.T) {
+	sts := graph.ResourceRef{Kind: "StatefulSet", Namespace: "ns", Name: "database"}
+	pod := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "database-0"}
+	g := graph.New(sts)
+	g.AddNode(sts, struct{}{})
+	g.AddNode(pod, struct{}{})
+	g.AddEdge(sts, pod, graph.EdgeOwns)
+
+	owners := replicaOwners([]*Finding{{ID: "f-1", Resource: pod}}, g)
+	require.Equal(t, sts, owners["f-1"])
 }
 
 func TestRolloutStuckRequiresTargetReplicaSetPod(t *testing.T) {

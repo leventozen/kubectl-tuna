@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 E2E="$ROOT/examples/e2e.sh"
 
-expected_cases=$'broken-readiness-port\nhealthy-service\nincomplete-rbac\nmultiple-workloads-one-service\nmulti-container-isolation\nstale-event-identity\nmultiple-replicaset-rollout\nservice-selector-mismatch\nfailed-scheduling\nhpa-metrics-unavailable\npending-pvc\noomkilled'
+expected_cases=$'broken-readiness-port\nhealthy-service\nincomplete-rbac\nmultiple-workloads-one-service\nmulti-container-isolation\nstale-event-identity\nmultiple-replicaset-rollout\nservice-selector-mismatch\nfailed-scheduling\nhpa-metrics-unavailable\npending-pvc\nstatefulset-unavailable\noomkilled'
 actual_cases="$("$E2E" --list)"
 [[ "$actual_cases" == "$expected_cases" ]] || {
 	printf 'unexpected E2E case list:\n%s\n' "$actual_cases" >&2

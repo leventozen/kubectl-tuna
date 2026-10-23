@@ -95,6 +95,9 @@ kubectl tuna inspect service NAME -n NAMESPACE
 # Workload lifecycle: Deployment → ReplicaSets → Pods
 kubectl tuna inspect deployment NAME -n NAMESPACE
 
+# Ordered workload lifecycle: StatefulSet → Pods
+kubectl tuna inspect statefulset NAME -n NAMESPACE
+
 # Pod, owner chain, scheduled Node, and selecting Services
 kubectl tuna inspect pod NAME -n NAMESPACE
 
@@ -111,10 +114,10 @@ kubectl tuna inspect service NAME -n NAMESPACE -o json
 ## How it works
 
 Tuna uses the current kubeconfig to collect a focused graph around one Service,
-Deployment, or Pod. It verifies that the focus did not change during
-collection, evaluates deterministic rules against structured Kubernetes state,
-and connects findings only when an explicit typed relationship supports the
-causal step.
+Deployment, StatefulSet, or Pod. It verifies that the focus did not change
+during collection, evaluates deterministic rules against structured Kubernetes
+state, and connects findings only when an explicit typed relationship supports
+the causal step.
 
 ```mermaid
 flowchart LR
@@ -139,7 +142,7 @@ rule, correlation, health, and rendering walkthrough.
 | Family | Findings |
 |---|---|
 | Traffic path | `service-selector-no-pods`, `service-target-port-mismatch`, `service-no-ready-endpoints`, `service-terminating-endpoints-only`, `readiness-probe-port-mismatch`, `readiness-probe-failing`, `pod-not-ready` |
-| Workload lifecycle | `crashloop-backoff`, `image-pull-failure`, `missing-config-reference`, `container-oomkilled`, `container-sigkill`, `deployment-unavailable` |
+| Workload lifecycle | `crashloop-backoff`, `image-pull-failure`, `missing-config-reference`, `container-oomkilled`, `container-sigkill`, `deployment-unavailable`, `statefulset-unavailable` |
 | Scheduling | `pod-unschedulable` (resource shortage, untolerated taint, affinity/selector mismatch) |
 | Storage | `persistent-volume-claim-missing`, `persistent-volume-claim-pending` (Pending is a risk unless exact scheduler evidence proves it is blocking) |
 | Autoscaling | `hpa-metrics-unavailable`, `hpa-scale-up-limited` (standalone capacity risks; neither is treated as proof of workload outage) |
@@ -186,6 +189,7 @@ make demo SCENARIO=oomkilled
 make demo SCENARIO=failed-scheduling
 make demo SCENARIO=pending-pvc
 make demo SCENARIO=hpa-metrics-unavailable
+make demo SCENARIO=statefulset-unavailable
 ```
 
 The broken scenarios run against Kind in `examples/e2e.sh`, together with
@@ -197,7 +201,9 @@ and a multiple-ReplicaSet rollout boundary. A Pending-PVC case verifies the
 exact PVC→Pod scheduling chain without treating normal delayed binding as a
 proven outage. An HPA case verifies that an unavailable metrics pipeline is
 shown as a standalone capacity risk while the target Deployment remains
-healthy. The RBAC case must return `unknown`
+healthy. A StatefulSet case verifies direct StatefulSet→Pod ownership and an
+image-pull→Pod NotReady→StatefulSet unavailable chain without inventing a
+Deployment-style progress deadline. The RBAC case must return `unknown`
 with explicit partial evidence and no false zero-endpoint finding. The
 shared-Service case proves that a broken Pod explains only its owning Deployment
 even when another selected workload has its own unavailable finding. A
@@ -237,7 +243,7 @@ every related Node's kubelet version. Mixed kubelet minors inside the reviewed
 window are allowed; unavailable, newer-than-server, or unreviewed kubelets skip
 only those rules and make the result explicitly `unknown`.
 
-`make corpus` runs the machine-readable seed-corpus contract. Its current ten
+`make corpus` runs the machine-readable seed-corpus contract. Its current eleven
 snapshots are author-constructed fake-client fixtures, not real-cluster
 evidence; one is a healthy control. Evidence classes, case-acceptance rules,
 and the intentionally still-open 25-case/10-control target are documented in
@@ -251,7 +257,10 @@ field-validation cases.
 
 ## Current limitations
 
-- Only Service, Deployment, and Pod are valid inspection entry points.
+- Service, Deployment, StatefulSet, and Pod are the valid inspection entry points.
+- StatefulSet availability and direct Pod ownership are covered. Tuna does not
+  claim a StatefulSet rollout is stuck from revision differences or replica
+  counts alone because the API has no Deployment-style progress deadline.
 - Built-in rules currently have a reviewed Kubernetes 1.34–1.37 window. This
   is not a support guarantee until the multi-version real-cluster gate passes;
   other minors cause version-scoped rules to be skipped.

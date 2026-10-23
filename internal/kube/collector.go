@@ -34,8 +34,9 @@ func NewCollector(client kubernetes.Interface) *Collector {
 }
 
 // CollectService builds a graph around a Service: selected Pods, their owner
-// chain (ReplicaSet → Deployment), EndpointSlices, referenced ConfigMaps and
-// Secret references, and related events. Secret payloads are never fetched.
+// chain (ReplicaSet → Deployment or StatefulSet), EndpointSlices, referenced
+// ConfigMaps and Secret references, and related events. Secret payloads are
+// never fetched.
 func (c *Collector) CollectService(ctx context.Context, namespace, name string) (*graph.Graph, error) {
 	startedAt := time.Now()
 	svc, err := c.client.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
@@ -162,19 +163,88 @@ func (c *Collector) CollectDeployment(ctx context.Context, namespace, name strin
 		}
 	}
 
-	// Services selecting those Pods, plus their EndpointSlices.
-	svcList := &corev1.ServiceList{}
-	if len(ownedPods) > 0 {
-		listed, err := c.client.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			g.AddCollectionIssue(graph.CollectionIssue{
-				Source: graph.SourceService, Resource: depRef,
-				Message: fmt.Sprintf("could not list Services selecting Deployment Pods: %v", err),
-			})
-		} else {
-			svcList = listed
+	c.collectServicesSelectingPods(ctx, g, namespace, depRef, "Deployment", ownedPods)
+
+	c.collectHorizontalPodAutoscalers(ctx, g, namespace)
+	c.collectEvents(ctx, g, namespace)
+	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
+		return c.client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+	})
+	return g, nil
+}
+
+// CollectStatefulSet builds a graph around a StatefulSet: directly owned Pods,
+// Services selecting those Pods, EndpointSlices, referenced configuration and
+// storage, Nodes, and related Events. StatefulSet ownership is direct; Tuna
+// does not insert Deployment/ReplicaSet assumptions into this path.
+func (c *Collector) CollectStatefulSet(ctx context.Context, namespace, name string) (*graph.Graph, error) {
+	startedAt := time.Now()
+	sts, err := c.client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get statefulset %s/%s: %w", namespace, name, err)
+	}
+	stsRef := graph.ResourceRef{Kind: "StatefulSet", Namespace: namespace, Name: name}
+	g := graph.New(stsRef)
+	g.BeginCollection(startedAt, sts)
+	g.AddNode(stsRef, sts)
+	c.collectClusterInfo(ctx, g)
+
+	workloadSelector, err := metav1.LabelSelectorAsSelector(sts.Spec.Selector)
+	if err != nil {
+		return nil, fmt.Errorf("parse statefulset selector: %w", err)
+	}
+	var ownedPods []*corev1.Pod
+	podList, err := c.client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: workloadSelector.String(),
+	})
+	if err != nil {
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourcePod, Resource: stsRef,
+			Message: fmt.Sprintf("could not list StatefulSet Pods: %v", err),
+		})
+	} else {
+		for i := range podList.Items {
+			pod := &podList.Items[i]
+			if !isControllerOwner(pod.OwnerReferences, appsv1.SchemeGroupVersion.String(), "StatefulSet", sts.UID) {
+				continue
+			}
+			podRef := c.addPod(ctx, g, pod)
+			g.AddEdge(stsRef, podRef, graph.EdgeOwns)
+			ownedPods = append(ownedPods, pod)
 		}
 	}
+
+	c.collectServicesSelectingPods(ctx, g, namespace, stsRef, "StatefulSet", ownedPods)
+	c.collectEvents(ctx, g, namespace)
+	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
+		return c.client.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+	})
+	return g, nil
+}
+
+// collectServicesSelectingPods performs the unavoidable namespace-wide reverse
+// Service selector discovery for a workload's exact owned Pods, then retains
+// EndpointSlices only for matching Services.
+func (c *Collector) collectServicesSelectingPods(
+	ctx context.Context,
+	g *graph.Graph,
+	namespace string,
+	workloadRef graph.ResourceRef,
+	workloadKind string,
+	pods []*corev1.Pod,
+) {
+	if len(pods) == 0 {
+		return
+	}
+	svcList, err := c.client.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourceService, Resource: workloadRef,
+			Message: fmt.Sprintf("could not list Services selecting %s Pods: %v", workloadKind, err),
+		})
+		return
+	}
+
 	for i := range svcList.Items {
 		svc := &svcList.Items[i]
 		if len(svc.Spec.Selector) == 0 {
@@ -183,14 +253,15 @@ func (c *Collector) CollectDeployment(ctx context.Context, namespace, name strin
 		sel := labels.Set(svc.Spec.Selector).AsSelector()
 		matched := false
 		svcRef := graph.ResourceRef{Kind: "Service", Namespace: namespace, Name: svc.Name}
-		for _, pod := range ownedPods {
-			if sel.Matches(labels.Set(pod.Labels)) {
-				if !matched {
-					g.AddNode(svcRef, svc)
-					matched = true
-				}
-				g.AddEdge(svcRef, graph.ResourceRef{Kind: "Pod", Namespace: namespace, Name: pod.Name}, graph.EdgeSelects)
+		for _, pod := range pods {
+			if !sel.Matches(labels.Set(pod.Labels)) {
+				continue
 			}
+			if !matched {
+				g.AddNode(svcRef, svc)
+				matched = true
+			}
+			g.AddEdge(svcRef, graph.ResourceRef{Kind: "Pod", Namespace: namespace, Name: pod.Name}, graph.EdgeSelects)
 		}
 		if !matched {
 			continue
@@ -212,24 +283,49 @@ func (c *Collector) CollectDeployment(ctx context.Context, namespace, name strin
 			g.AddEdge(svcRef, sliceRef, graph.EdgeRoutesTo)
 		}
 	}
-
-	c.collectHorizontalPodAutoscalers(ctx, g, namespace)
-	c.collectEvents(ctx, g, namespace)
-	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
-		return c.client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-	})
-	return g, nil
 }
 
-// addPod adds a Pod, its owner chain (ReplicaSet → Deployment), and its
-// ConfigMap/Secret/PersistentVolumeClaim references to the graph. Secret
-// payloads are never read.
+// addPod adds a Pod, its owner chain (ReplicaSet → Deployment or StatefulSet),
+// and its ConfigMap/Secret/PersistentVolumeClaim references to the graph.
+// Secret payloads are never read.
 func (c *Collector) addPod(ctx context.Context, g *graph.Graph, pod *corev1.Pod) graph.ResourceRef {
 	podRef := graph.ResourceRef{Kind: "Pod", Namespace: pod.Namespace, Name: pod.Name}
 	g.AddNode(podRef, pod)
 
 	// Owner chain.
 	for _, or := range pod.OwnerReferences {
+		if or.APIVersion == appsv1.SchemeGroupVersion.String() &&
+			or.Kind == "StatefulSet" && or.Controller != nil && *or.Controller {
+			stsRef := graph.ResourceRef{Kind: "StatefulSet", Namespace: pod.Namespace, Name: or.Name}
+			ownerMatches := false
+			if existing, exists := g.Node(stsRef); exists {
+				sts, ok := existing.Object.(*appsv1.StatefulSet)
+				ownerMatches = ok && sts.UID == or.UID
+			} else {
+				sts, err := c.client.AppsV1().StatefulSets(pod.Namespace).Get(ctx, or.Name, metav1.GetOptions{})
+				if err != nil {
+					g.AddUnknownNode(stsRef)
+					g.AddCollectionIssue(graph.CollectionIssue{
+						Source: graph.SourceStatefulSet, Resource: stsRef,
+						Message: fmt.Sprintf("could not get owner StatefulSet: %v", err),
+					})
+				} else if sts.UID != or.UID {
+					g.AddUnknownNode(stsRef)
+					g.AddCollectionIssue(graph.CollectionIssue{
+						Source: graph.SourceStatefulSet, Resource: stsRef,
+						Message: fmt.Sprintf("owner StatefulSet UID %q did not match Pod ownerReference UID %q", sts.UID, or.UID),
+					})
+				} else {
+					g.AddNode(stsRef, sts)
+					ownerMatches = true
+				}
+			}
+			if !ownerMatches {
+				continue
+			}
+			g.AddEdge(stsRef, podRef, graph.EdgeOwns)
+			continue
+		}
 		if or.Kind != "ReplicaSet" {
 			continue
 		}
@@ -423,6 +519,21 @@ func validateControllerFreshness(g *graph.Graph) {
 			Message: fmt.Sprintf(
 				"ReplicaSet controller has observed generation %d, behind metadata.generation %d",
 				rs.Status.ObservedGeneration, rs.Generation,
+			),
+			AffectsHealth: true,
+		})
+	}
+
+	for _, node := range g.NodesOfKind("StatefulSet") {
+		sts, ok := node.Object.(*appsv1.StatefulSet)
+		if !ok || sts.Generation <= 0 || sts.Status.ObservedGeneration >= sts.Generation {
+			continue
+		}
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourceTemporalIntegrity, Resource: node.Ref,
+			Message: fmt.Sprintf(
+				"StatefulSet controller has observed generation %d, behind metadata.generation %d",
+				sts.Status.ObservedGeneration, sts.Generation,
 			),
 			AffectsHealth: true,
 		})
@@ -708,6 +819,16 @@ func podNeedsEvents(pod *corev1.Pod) bool {
 func isOwnedBy(refs []metav1.OwnerReference, uid types.UID) bool {
 	for _, r := range refs {
 		if r.UID == uid {
+			return true
+		}
+	}
+	return false
+}
+
+func isControllerOwner(refs []metav1.OwnerReference, apiVersion, kind string, uid types.UID) bool {
+	for _, ref := range refs {
+		if ref.APIVersion == apiVersion && ref.Kind == kind && ref.UID == uid &&
+			ref.Controller != nil && *ref.Controller {
 			return true
 		}
 	}

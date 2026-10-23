@@ -53,7 +53,7 @@ func NewRootCommand(version string) *cobra.Command {
 		Version: version,
 		Short:   "Evidence-based Kubernetes diagnostics with causal chains",
 		Long: `Tuna inspects a Kubernetes resource, discovers its relationships
-(Pods, ReplicaSets, EndpointSlices, ConfigMaps, events, ...), evaluates
+(Pods, workload owners, EndpointSlices, ConfigMaps, events, ...), evaluates
 deterministic diagnostic rules over the resulting graph, and correlates
 the findings into causal chains that separate root causes from
 propagated symptoms.
@@ -78,6 +78,7 @@ Install the binary as a kubectl PATH plugin and run:
 	inspect.AddCommand(
 		newInspectKindCommand(opts, "service", "Inspect a Service and its traffic path"),
 		newInspectKindCommand(opts, "deployment", "Inspect a Deployment and its workload lifecycle"),
+		newInspectKindCommand(opts, "statefulset", "Inspect a StatefulSet and its ordered workload lifecycle"),
 		newInspectKindCommand(opts, "pod", "Inspect a Pod, its owners, node, and the Services selecting it"),
 	)
 	root.AddCommand(inspect)
@@ -151,6 +152,8 @@ func collect(ctx context.Context, c *kube.Collector, kind, namespace, name strin
 		return c.CollectService(ctx, namespace, name)
 	case "deployment":
 		return c.CollectDeployment(ctx, namespace, name)
+	case "statefulset":
+		return c.CollectStatefulSet(ctx, namespace, name)
 	case "pod":
 		return c.CollectPod(ctx, namespace, name)
 	default:

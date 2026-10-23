@@ -134,7 +134,7 @@ func validateSeedCorpusCase(t *testing.T, corpusCase seedCorpusCase, seenIDs map
 	require.True(t, info.IsDir())
 
 	for _, inspection := range corpusCase.Inspections {
-		require.Contains(t, []string{"service", "deployment", "pod"}, inspection.Focus.Kind)
+		require.Contains(t, []string{"service", "deployment", "statefulset", "pod"}, inspection.Focus.Kind)
 		require.NotEmpty(t, inspection.Focus.Namespace)
 		require.NotEmpty(t, inspection.Focus.Name)
 		require.Contains(t, []diag.Health{diag.HealthOK, diag.HealthDegraded, diag.HealthUnknown}, inspection.Expected.Health)

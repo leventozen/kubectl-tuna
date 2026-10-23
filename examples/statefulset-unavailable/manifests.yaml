@@ -1,0 +1,43 @@
+# StatefulSet Pods are owned directly by the StatefulSet, not through a
+# ReplicaSet. The invalid image creates a deterministic unavailable replica.
+#
+# Expected Tuna diagnosis:
+#   image-pull-failure → pod-not-ready → statefulset-unavailable
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tuna-demo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: tuna-demo
+spec:
+  clusterIP: None
+  # No selector: this governing Service does not add a separate traffic-path
+  # diagnosis to the StatefulSet ownership scenario.
+  ports:
+    - name: database
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database
+  namespace: tuna-demo
+spec:
+  serviceName: database
+  replicas: 1
+  selector:
+    matchLabels:
+      app: database
+  template:
+    metadata:
+      labels:
+        app: database
+    spec:
+      containers:
+        - name: database
+          image: invalid@@image

@@ -35,6 +35,7 @@ ALL_E2E_CASES=(
 	failed-scheduling
 	hpa-metrics-unavailable
 	pending-pvc
+	statefulset-unavailable
 	oomkilled
 )
 
@@ -404,6 +405,41 @@ raise SystemExit(0 if ok else 1)
 '
 }
 
+matches_statefulset_unavailable_contract() {
+	python3 -c '
+import json, sys
+res = json.load(sys.stdin)
+findings = res.get("findings", [])
+
+def one(finding_type):
+    matches = [finding for finding in findings if finding.get("type") == finding_type]
+    return matches[0] if len(matches) == 1 else None
+
+image_pull = one("image-pull-failure")
+not_ready = one("pod-not-ready")
+unavailable = one("statefulset-unavailable")
+actual_types = sorted(finding.get("type") for finding in findings)
+expected_types = sorted(["image-pull-failure", "pod-not-ready", "statefulset-unavailable"])
+
+ok = all([image_pull, not_ready, unavailable]) and (
+    res.get("health") == "degraded"
+    and res.get("partial") is False
+    and res.get("warnings", []) == []
+    and actual_types == expected_types
+    and res.get("rootCauses") == [image_pull.get("id")]
+    and image_pull.get("resource", {}).get("name") == "database-0"
+    and image_pull.get("causes") == [not_ready.get("id")]
+    and image_pull.get("causedBy", []) == []
+    and not_ready.get("causedBy") == [image_pull.get("id")]
+    and not_ready.get("causes") == [unavailable.get("id")]
+    and unavailable.get("resource", {}).get("kind") == "StatefulSet"
+    and unavailable.get("resource", {}).get("name") == "database"
+    and unavailable.get("causedBy") == [not_ready.get("id")]
+)
+raise SystemExit(0 if ok else 1)
+'
+}
+
 matches_stale_event_identity_contract() {
 	python3 -c '
 import json, sys
@@ -651,6 +687,37 @@ check_hpa_metrics_unavailable() {
 		[ -n "$out" ] && echo "$out"
 		kubectl get hpa queue-worker -n tuna-demo -o yaml 2>/dev/null || true
 		kubectl get deployment queue-worker -n tuna-demo -o yaml 2>/dev/null || true
+		fail=1
+	fi
+	kubectl delete namespace tuna-demo --wait >/dev/null
+}
+
+check_statefulset_unavailable() {
+	local scenario="statefulset-unavailable" deadline_s=120
+	echo "=== scenario: $scenario (direct StatefulSet ownership) ==="
+	kubectl apply -f "$DIR/$scenario/manifests.yaml" >/dev/null
+
+	local start=$SECONDS out="" status=1 result="FAIL"
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		set +e
+		out="$("$TUNA_BIN" inspect statefulset database -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 2 ] && echo "$out" | matches_statefulset_unavailable_contract; then
+			result="PASS"
+			break
+		fi
+	done
+
+	write_case_result "$scenario" "$out"
+	if [ "$result" = "PASS" ]; then
+		echo "PASS: invalid image explained Pod and StatefulSet unavailability ($((SECONDS - start))s)"
+	else
+		echo "FAIL: StatefulSet ownership contract was not met within ${deadline_s}s (exit: $status)"
+		[ -n "$out" ] && echo "$out"
+		kubectl get statefulset database -n tuna-demo -o yaml 2>/dev/null || true
+		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
 		fail=1
 	fi
 	kubectl delete namespace tuna-demo --wait >/dev/null
@@ -1216,6 +1283,9 @@ run_selected_case() {
 		;;
 	pending-pvc)
 		check pending-pvc deployment storage-api 120 persistent-volume-claim-pending
+		;;
+	statefulset-unavailable)
+		check_statefulset_unavailable
 		;;
 	oomkilled)
 		check oomkilled deployment billing 240 container-oomkilled

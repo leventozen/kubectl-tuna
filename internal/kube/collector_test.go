@@ -13,6 +13,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	versioninfo "k8s.io/apimachinery/pkg/version"
 	fakediscovery "k8s.io/client-go/discovery/fake"
@@ -156,6 +157,140 @@ func TestStaleDeploymentObservedGenerationSuspendsDiagnosticRules(t *testing.T) 
 	require.Empty(t, res.Findings)
 	require.Contains(t, res.Rules.SuspendedReason, "controller freshness")
 	require.True(t, hasWarningSource(res, graph.SourceTemporalIntegrity))
+}
+
+func TestStaleStatefulSetObservedGenerationSuspendsDiagnosticRules(t *testing.T) {
+	replicas := int32(1)
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "database", Namespace: "ns", UID: "sts-uid", ResourceVersion: "10", Generation: 4,
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "database"}},
+		},
+		Status: appsv1.StatefulSetStatus{ObservedGeneration: 3},
+	}
+	client := fakeClient(sts)
+
+	g, err := kube.NewCollector(client).CollectStatefulSet(context.Background(), "ns", "database")
+	require.NoError(t, err)
+	require.Equal(t, graph.FocusStabilityStable, g.Collection.FocusStability)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthUnknown, res.Health)
+	require.Empty(t, res.Findings)
+	require.Contains(t, res.Rules.SuspendedReason, "controller freshness")
+	require.True(t, hasWarningSource(res, graph.SourceTemporalIntegrity))
+}
+
+func TestStatefulSetCollectorRetainsOnlyExactOwnedPods(t *testing.T) {
+	replicas := int32(1)
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "database", Namespace: "ns", UID: "sts-uid", ResourceVersion: "10", Generation: 1,
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "database"}},
+		},
+		Status: appsv1.StatefulSetStatus{ObservedGeneration: 1, AvailableReplicas: 1, ReadyReplicas: 1},
+	}
+	owned := readyPod("database-0")
+	owned.Labels = map[string]string{"app": "database"}
+	owned.OwnerReferences = []metav1.OwnerReference{statefulSetOwnerRef("database", "sts-uid")}
+	unrelated := readyPod("lookalike-0")
+	unrelated.Labels = map[string]string{"app": "database"}
+	unrelated.OwnerReferences = []metav1.OwnerReference{statefulSetOwnerRef("lookalike", "other-uid")}
+	nonController := readyPod("database-helper")
+	nonController.Labels = map[string]string{"app": "database"}
+	nonController.OwnerReferences = []metav1.OwnerReference{{
+		APIVersion: appsv1.SchemeGroupVersion.String(), Kind: "StatefulSet",
+		Name: "database", UID: "sts-uid",
+	}}
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "database", Namespace: "ns"},
+		Spec:       corev1.ServiceSpec{Selector: map[string]string{"app": "database"}},
+	}
+	client := fakeClient(sts, owned, unrelated, nonController, svc)
+
+	g, err := kube.NewCollector(client).CollectStatefulSet(context.Background(), "ns", "database")
+	require.NoError(t, err)
+	stsRef := graph.ResourceRef{Kind: "StatefulSet", Namespace: "ns", Name: "database"}
+	ownedRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "database-0"}
+	unrelatedRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "lookalike-0"}
+	nonControllerRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "database-helper"}
+	svcRef := graph.ResourceRef{Kind: "Service", Namespace: "ns", Name: "database"}
+	require.True(t, g.HasEdge(stsRef, ownedRef, graph.EdgeOwns))
+	require.True(t, g.HasEdge(svcRef, ownedRef, graph.EdgeSelects))
+	_, exists := g.Node(unrelatedRef)
+	require.False(t, exists, "matching labels do not prove StatefulSet ownership")
+	_, exists = g.Node(nonControllerRef)
+	require.False(t, exists, "a non-controller ownerReference does not prove StatefulSet lifecycle ownership")
+}
+
+func TestPodCollectorResolvesDirectStatefulSetOwner(t *testing.T) {
+	pod := readyPod("database-0")
+	pod.UID = "pod-uid"
+	pod.OwnerReferences = []metav1.OwnerReference{statefulSetOwnerRef("database", "sts-uid")}
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "database", Namespace: "ns", UID: "sts-uid", Generation: 1},
+		Status:     appsv1.StatefulSetStatus{ObservedGeneration: 1},
+	}
+	client := fakeClient(pod, sts)
+
+	g, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", "database-0")
+	require.NoError(t, err)
+	require.True(t, g.HasEdge(
+		graph.ResourceRef{Kind: "StatefulSet", Namespace: "ns", Name: "database"},
+		graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "database-0"},
+		graph.EdgeOwns,
+	))
+}
+
+func TestPodCollectorRejectsRecreatedSameNameStatefulSetOwner(t *testing.T) {
+	pod := readyPod("database-0")
+	pod.UID = "pod-uid"
+	pod.OwnerReferences = []metav1.OwnerReference{statefulSetOwnerRef("database", "old-sts-uid")}
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "database", Namespace: "ns", UID: "new-sts-uid", Generation: 1},
+		Status:     appsv1.StatefulSetStatus{ObservedGeneration: 1},
+	}
+	client := fakeClient(pod, sts)
+
+	g, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", "database-0")
+	require.NoError(t, err)
+	stsRef := graph.ResourceRef{Kind: "StatefulSet", Namespace: "ns", Name: "database"}
+	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "database-0"}
+	require.False(t, g.HasEdge(stsRef, podRef, graph.EdgeOwns),
+		"same name with a different UID is not the Pod owner")
+	res := diag.NewEngine().Evaluate(g)
+	require.True(t, hasWarningSource(res, graph.SourceStatefulSet))
+}
+
+func TestStatefulSetPodListFailureKeepsStatusDiagnosisAvailable(t *testing.T) {
+	replicas := int32(1)
+	sts := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "database", Namespace: "ns", UID: "sts-uid", ResourceVersion: "10", Generation: 1,
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "database"}},
+		},
+		Status: appsv1.StatefulSetStatus{ObservedGeneration: 1, AvailableReplicas: 0},
+	}
+	client := fakeClient(sts)
+	client.PrependReactor("list", "pods", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("forbidden")
+	})
+
+	g, err := kube.NewCollector(client).CollectStatefulSet(context.Background(), "ns", "database")
+	require.NoError(t, err)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthDegraded, res.Health)
+	require.True(t, res.Partial)
+	require.True(t, hasWarningSource(res, graph.SourcePod))
+	require.True(t, hasFindingType(res, diag.StatefulSetUnavailable))
 }
 
 func TestStaleRelatedDeploymentSuspendsServiceDiagnosis(t *testing.T) {
@@ -804,4 +939,15 @@ func actionCount(actions []clienttesting.Action, verb, resource string) int {
 		}
 	}
 	return count
+}
+
+func statefulSetOwnerRef(name string, uid types.UID) metav1.OwnerReference {
+	controller := true
+	return metav1.OwnerReference{
+		APIVersion: appsv1.SchemeGroupVersion.String(),
+		Kind:       "StatefulSet",
+		Name:       name,
+		UID:        uid,
+		Controller: &controller,
+	}
 }

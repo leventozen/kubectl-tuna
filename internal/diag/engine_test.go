@@ -65,6 +65,10 @@ func evaluateScenario(t *testing.T, scenario, focusKind, namespace, name string)
 		graph, err := collector.CollectDeployment(ctx, namespace, name)
 		require.NoError(t, err)
 		return diag.NewEngine().Evaluate(graph)
+	case "statefulset":
+		graph, err := collector.CollectStatefulSet(ctx, namespace, name)
+		require.NoError(t, err)
+		return diag.NewEngine().Evaluate(graph)
 	case "pod":
 		graph, err := collector.CollectPod(ctx, namespace, name)
 		require.NoError(t, err)
@@ -117,6 +121,18 @@ func TestBrokenReadinessPort(t *testing.T) {
 	dep := findingOfType(res, diag.DeploymentUnavailable)
 	require.NotNil(t, dep)
 	require.True(t, dep.IsSymptom())
+}
+
+func TestStatefulSetUnavailable(t *testing.T) {
+	res := evaluateScenario(t, "statefulset-unavailable", "statefulset", "data", "database")
+	require.Equal(t, diag.HealthDegraded, res.Health)
+	require.False(t, res.Partial)
+	require.Len(t, res.RootCauses, 1)
+	require.Equal(t, []diag.FindingType{
+		diag.ImagePullFailure,
+		diag.PodNotReady,
+		diag.StatefulSetUnavailable,
+	}, chainTypes(res.RootCauses[0]))
 }
 
 func TestServiceSelectorWithNoPodsDoesNotGuessIntendedWorkload(t *testing.T) {

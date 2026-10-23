@@ -44,3 +44,10 @@ func TestRootCommandUsesKubectlTunaIdentity(t *testing.T) {
 	require.Equal(t, "kubectl-tuna", root.Use)
 	require.Contains(t, root.Long, "kubectl tuna inspect")
 }
+
+func TestRootCommandExposesStatefulSetInspection(t *testing.T) {
+	root := NewRootCommand("dev")
+	command, _, err := root.Find([]string{"inspect", "statefulset"})
+	require.NoError(t, err)
+	require.Equal(t, "statefulset", command.Name())
+}

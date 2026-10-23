@@ -234,13 +234,15 @@ func kubeletCompatibilitySkipReason(g *graph.Graph, compatibility KubernetesComp
 	return ""
 }
 
-// replicaOwners returns the exact Deployment owner for Pod findings when the
-// graph proves Deployment --owns--> ReplicaSet --owns--> Pod. The map is
-// presentation-only: console output may group equivalent replicas, while JSON
-// keeps every original finding and causal edge unchanged.
+// replicaOwners returns the exact workload owner for Pod findings when the
+// graph proves Deployment --owns--> ReplicaSet --owns--> Pod or the direct
+// StatefulSet --owns--> Pod path. The map is presentation-only: console output
+// may group equivalent replicas, while JSON keeps every original finding and
+// causal edge unchanged.
 func replicaOwners(findings []*Finding, g *graph.Graph) map[string]graph.ResourceRef {
 	owners := make(map[string]graph.ResourceRef)
 	deployments := g.NodesOfKind("Deployment")
+	statefulSets := g.NodesOfKind("StatefulSet")
 	for _, finding := range findings {
 		if finding.ID == "" || finding.Resource.Kind != "Pod" {
 			continue
@@ -248,6 +250,15 @@ func replicaOwners(findings []*Finding, g *graph.Graph) map[string]graph.Resourc
 		for _, deployment := range deployments {
 			if g.HasTypedPath(deployment.Ref, finding.Resource, graph.EdgeOwns, graph.EdgeOwns) {
 				owners[finding.ID] = deployment.Ref
+				break
+			}
+		}
+		if _, ok := owners[finding.ID]; ok {
+			continue
+		}
+		for _, statefulSet := range statefulSets {
+			if g.HasEdge(statefulSet.Ref, finding.Resource, graph.EdgeOwns) {
+				owners[finding.ID] = statefulSet.Ref
 				break
 			}
 		}

@@ -34,6 +34,7 @@ var causalRules = []causalRule{
 	{PodUnschedulable, PodNotReady, sameResource},
 	{PodNotReady, ServiceNoReadyEndpoints, selectedByService},
 	{PodNotReady, DeploymentUnavailable, ownedByDeployment},
+	{PodNotReady, StatefulSetUnavailable, ownedByStatefulSet},
 	{PodNotReady, RolloutStuck, ownedByDeploymentRolloutTarget},
 	{ServiceSelectorNoPods, ServiceNoReadyEndpoints, sameResource},
 	{NodePressure, PodEvicted, scheduledOnNode},
@@ -112,6 +113,10 @@ func selectedByService(cause, effect *Finding, g *graph.Graph) bool {
 
 func ownedByDeployment(cause, effect *Finding, g *graph.Graph) bool {
 	return g.HasTypedPath(effect.Resource, cause.Resource, graph.EdgeOwns, graph.EdgeOwns)
+}
+
+func ownedByStatefulSet(cause, effect *Finding, g *graph.Graph) bool {
+	return g.HasEdge(effect.Resource, cause.Resource, graph.EdgeOwns)
 }
 
 // ownedByDeploymentRolloutTarget links Pod NotReady to rollout-stuck only when

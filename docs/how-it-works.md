@@ -6,7 +6,7 @@ Kubernetes mechanism and the required resource relationship both exist.
 
 ```mermaid
 flowchart LR
-    CLI["inspect Service / Deployment / Pod"] --> C["focused collector"]
+    CLI["inspect Service / Deployment / StatefulSet / Pod"] --> C["focused collector"]
     C --> T["temporal-integrity check"]
     T --> G["directed resource graph"]
     T --> U["collection issues / unknown evidence"]
@@ -21,14 +21,15 @@ flowchart LR
 
 ### 1. Start from one focus resource
 
-The command always has a focus: the Service, Deployment, or Pod named by the
-user. Collection expands only far enough to evaluate relationships relevant to
-that focus.
+The command always has a focus: the Service, Deployment, StatefulSet, or Pod
+named by the user. Collection expands only far enough to evaluate relationships
+relevant to that focus.
 
 | Focus | Relationships collected |
 |---|---|
 | Service | selected Pods, their owner chains and Nodes, the Service's EndpointSlices, ConfigMap/Secret/PVC references, related Deployment HPAs, related events |
 | Deployment | owned ReplicaSets and Pods, Services selecting those Pods, their EndpointSlices, Nodes, configuration and PVC references, exact-target HPAs, related events |
+| StatefulSet | directly owned Pods, Services selecting those Pods, their EndpointSlices, Nodes, configuration and PVC references, related events |
 | Pod | owner chain, scheduled Node, Services selecting the Pod, their EndpointSlices, configuration and PVC references, related Deployment HPAs, related events |
 
 “Focused” describes the retained graph, not a promise that every Kubernetes
@@ -55,7 +56,7 @@ again. If that final read fails, or the focus identity/revision changed, the
 graph is known to span a transition: rule evaluation is suspended and health
 is `unknown` rather than presenting a mixed-time causal chain.
 
-For every collected Deployment and ReplicaSet, Tuna also requires
+For every collected Deployment, ReplicaSet, and StatefulSet, Tuna also requires
 `status.observedGeneration >= metadata.generation`. A related controller that
 has not observed the latest specification is reconciling stale status;
 diagnosing availability or rollout state from that window would be premature.
@@ -107,6 +108,7 @@ name. Relationships are directed edges with a specific meaning:
 Service    --selects------> Pod
 Service    --routes-to----> EndpointSlice
 Deployment --owns---------> ReplicaSet --owns---------> Pod
+StatefulSet --owns--------> Pod
 Pod        --references---> ConfigMap / Secret reference
 Pod        --claims-storage-> PersistentVolumeClaim
 Pod        --scheduled-on-> Node
@@ -175,6 +177,9 @@ pod-not-ready
   -- Deployment owns that Pod through any owned ReplicaSet --> deployment-unavailable
 
 pod-not-ready
+  -- StatefulSet directly owns that Pod --> statefulset-unavailable
+
+pod-not-ready
   -- Deployment owns that Pod through the current-template ReplicaSet --> rollout-stuck
 
 node-pressure
@@ -190,6 +195,12 @@ contributes to aggregate Deployment availability. `rollout-stuck` is narrower:
 only a Pod owned by the ReplicaSet whose template matches
 `Deployment.spec.template` (ignoring only `pod-template-hash`) may explain the
 current rollout target. Revision annotations are history, not identity.
+
+`statefulset-unavailable` accepts only a direct StatefulSet→Pod ownership edge.
+It reports a factual `availableReplicas < spec.replicas` shortfall but does not
+invent `rollout-stuck`: StatefulSet has no Deployment-style progress deadline,
+and revision differences can represent a normal RollingUpdate, partitioned
+rollout, or OnDelete strategy.
 
 There is no generic “these objects are within four graph hops, therefore one
 caused the other” fallback. If the exact predicate cannot be proven, both
@@ -245,10 +256,11 @@ still route to them when every available endpoint is terminating.
 
 The console groups root candidates, causal chains, propagated symptoms, other
 findings, skipped rules, and incomplete evidence. Equivalent Pod findings are
-collapsed only when an exact Deployment→ReplicaSet→Pod ownership path, the
-same container identity, and the same causal shape are present; each affected
-Pod remains visible, and full grouped findings retain evidence per Pod. JSON is
-never grouped and keeps every finding, evidence item, and causal link by ID.
+collapsed only when an exact Deployment→ReplicaSet→Pod or StatefulSet→Pod
+ownership path, the same container identity, and the same causal shape are
+present; each affected Pod remains visible, and full grouped findings retain
+evidence per Pod. JSON is never grouped and keeps every finding, evidence item,
+and causal link by ID.
 Exit status is based on focus health: `0` for healthy, `2` for degraded, and
 `1` for unknown or command/API failure.
 
@@ -293,5 +305,6 @@ The trust model is deliberately conservative:
 5. **Secret payloads are not diagnostic input.** Tuna currently leaves Secret
    existence as unknown rather than issuing a typed GET that returns its data.
 6. **Transition windows suspend diagnosis.** A changed/unverifiable focus
-   revision or stale collected Deployment/ReplicaSet generation produces
-   explicit `unknown` health instead of running rules over mixed-time evidence.
+   revision or stale collected Deployment/ReplicaSet/StatefulSet generation
+   produces explicit `unknown` health instead of running rules over mixed-time
+   evidence.

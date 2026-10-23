@@ -79,9 +79,17 @@ silently shrink, expand, or mislabel the reviewed window.
 ## Review record for Kubernetes 1.37
 
 The 1.37 window advance reviewed the stable API surfaces Tuna actually reads:
-core/v1 Pods, Services, Nodes, ConfigMaps, and Events; apps/v1 Deployments and
-ReplicaSets; and discovery.k8s.io/v1 EndpointSlices. Tuna does not consume an
-alpha or beta Kubernetes API.
+core/v1 Pods, Services, Nodes, ConfigMaps, and Events; apps/v1 Deployments,
+ReplicaSets, and StatefulSets; and discovery.k8s.io/v1 EndpointSlices. Tuna
+does not consume an alpha or beta Kubernetes API.
+
+StatefulSet diagnosis in this window is deliberately limited to stable status
+and ownership fields: `observedGeneration`, replica counts,
+`currentRevision`/`updateRevision`, and controller OwnerReferences. Tuna treats
+an availability shortfall as current state, but does not infer a stuck rollout
+from revision differences or interpret alpha update-strategy behavior. This
+keeps the rule independent of Deployment-only progress deadlines and of the
+alpha StatefulSet `Recreate` update strategy introduced in Kubernetes 1.37.
 
 The [Kubernetes 1.37 release notes](https://kubernetes.io/blog/2026/08/26/kubernetes-v1-37-release/)
 were checked against each rule family. The relaxed Service-name validation does

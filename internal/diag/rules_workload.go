@@ -434,3 +434,46 @@ func (deploymentUnavailableRule) Evaluate(g *graph.Graph) []*Finding {
 	}
 	return findings
 }
+
+// statefulSetUnavailableRule reports factual StatefulSet availability without
+// translating Deployment rollout assumptions to a controller that has no
+// progress-deadline condition. Normal RollingUpdate, OnDelete, and partitioned
+// transitions are not findings by themselves.
+type statefulSetUnavailableRule struct{}
+
+func (statefulSetUnavailableRule) ID() string { return "statefulset-unavailable" }
+
+func (statefulSetUnavailableRule) Evaluate(g *graph.Graph) []*Finding {
+	var findings []*Finding
+	for _, n := range g.NodesOfKind("StatefulSet") {
+		sts, ok := n.Object.(*appsv1.StatefulSet)
+		if !ok {
+			continue
+		}
+		desired := int32(1)
+		if sts.Spec.Replicas != nil {
+			desired = *sts.Spec.Replicas
+		}
+		if desired == 0 || sts.Status.AvailableReplicas >= desired {
+			continue
+		}
+
+		findings = append(findings, &Finding{
+			Type:       StatefulSetUnavailable,
+			Severity:   SeverityWarning,
+			Confidence: ConfidenceHigh,
+			Resource:   n.Ref,
+			Summary: fmt.Sprintf("StatefulSet has %d/%d available replicas",
+				sts.Status.AvailableReplicas, desired),
+			Detail: "The current status proves an availability shortfall, but StatefulSet does not expose a Deployment-style progress deadline. Tuna does not label the rollout stuck from replica counts or revision differences alone.",
+			Evidence: []Evidence{{
+				Source: "StatefulSet.status",
+				Value: fmt.Sprintf("desired=%d current=%d updated=%d ready=%d available=%d currentRevision=%q updateRevision=%q",
+					desired, sts.Status.CurrentReplicas, sts.Status.UpdatedReplicas,
+					sts.Status.ReadyReplicas, sts.Status.AvailableReplicas,
+					sts.Status.CurrentRevision, sts.Status.UpdateRevision),
+			}},
+		})
+	}
+	return findings
+}

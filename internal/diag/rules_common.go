@@ -55,6 +55,7 @@ func DefaultRuleRegistrations() []RuleRegistration {
 		builtInRule(missingConfigRefRule{}, RuleFamilyWorkload, "report definitively missing non-optional ConfigMap or Secret references", MissingConfigRef),
 		builtInKubeletRule(oomKilledRule{}, RuleFamilyWorkload, "classify confirmed OOMKilled and ambiguous SIGKILL termination state", ContainerOOMKilled, ContainerSIGKILL),
 		builtInRule(deploymentUnavailableRule{}, RuleFamilyWorkload, "report a Deployment below its desired availability", DeploymentUnavailable),
+		builtInRule(statefulSetUnavailableRule{}, RuleFamilyWorkload, "report a StatefulSet below its desired availability without inferring rollout failure", StatefulSetUnavailable),
 		builtInRule(rolloutStuckRule{}, RuleFamilyRollout, "report Deployment ProgressDeadlineExceeded state", RolloutStuck),
 		// Scheduling and resources
 		builtInRule(podUnschedulableRule{}, RuleFamilyScheduling, "classify a PodScheduled false condition and supporting scheduling events", PodUnschedulable),

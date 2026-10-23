@@ -54,13 +54,14 @@ const (
 	PodNotReady               FindingType = "pod-not-ready"
 
 	// Workload lifecycle
-	CrashLoopBackOff      FindingType = "crashloop-backoff"
-	ImagePullFailure      FindingType = "image-pull-failure"
-	MissingConfigRef      FindingType = "missing-config-reference"
-	ContainerOOMKilled    FindingType = "container-oomkilled"
-	ContainerSIGKILL      FindingType = "container-sigkill"
-	DeploymentUnavailable FindingType = "deployment-unavailable"
-	RolloutStuck          FindingType = "rollout-stuck"
+	CrashLoopBackOff       FindingType = "crashloop-backoff"
+	ImagePullFailure       FindingType = "image-pull-failure"
+	MissingConfigRef       FindingType = "missing-config-reference"
+	ContainerOOMKilled     FindingType = "container-oomkilled"
+	ContainerSIGKILL       FindingType = "container-sigkill"
+	DeploymentUnavailable  FindingType = "deployment-unavailable"
+	StatefulSetUnavailable FindingType = "statefulset-unavailable"
+	RolloutStuck           FindingType = "rollout-stuck"
 
 	// Scheduling and resources
 	PodUnschedulable             FindingType = "pod-unschedulable"

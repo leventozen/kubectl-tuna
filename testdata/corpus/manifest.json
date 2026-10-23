@@ -90,6 +90,20 @@
       ]
     },
     {
+      "id": "fixture-statefulset-unavailable",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "statefulset-unavailable",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["statefulset", "workload", "causal-chain"],
+      "limitations": ["author-constructed", "fake-client", "controller-status-synthetic"],
+      "inspections": [
+        {
+          "focus": {"kind": "statefulset", "namespace": "data", "name": "database"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["image-pull-failure"]}
+        }
+      ]
+    },
+    {
       "id": "fixture-missing-configmap",
       "evidenceClass": "synthetic-fixture",
       "fixture": "missing-configmap",

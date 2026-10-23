@@ -15,14 +15,15 @@ is checked against each rule's reviewed compatibility range. If version
 discovery fails, version-scoped rules are skipped and health is `unknown`
 unless other collected evidence already proves a current focus problem.
 
-The focus Service, Deployment, or Pod is fetched at both the beginning and end
-of collection using the same `get` permission. The second read verifies its
-UID, `resourceVersion`, and `generation`. If the read fails or the revision
-changed, rule evaluation is suspended because the related evidence is known or
-could be mixed across a transition. Every collected Deployment and ReplicaSet
-is also required to have `status.observedGeneration` at least as new as
-`metadata.generation`; this applies to related owner controllers as well as a
-Deployment focus and does not add API calls or permissions.
+The focus Service, Deployment, StatefulSet, or Pod is fetched at both the
+beginning and end of collection using the same `get` permission. The second
+read verifies its UID, `resourceVersion`, and `generation`. If the read fails
+or the revision changed, rule evaluation is suspended because the related
+evidence is known or could be mixed across a transition. Every collected
+Deployment, ReplicaSet, and StatefulSet is also required to have
+`status.observedGeneration` at least as new as `metadata.generation`; this
+applies to related owner controllers as well as a workload focus and does not
+add API calls or permissions.
 The reason Tuna does not issue blanket second reads or request `watch` access
 is documented in [`temporal-integrity.md`](temporal-integrity.md).
 
@@ -35,6 +36,7 @@ is documented in [`temporal-integrity.md`](temporal-integrity.md).
 | core | `events` | `list` | fetch supporting events with exact kind/name field selectors for related non-Ready Pods |
 | apps | `deployments` | `get` | fetch a Deployment focus or resolve a Pod owner |
 | apps | `replicasets` | `get`, `list` | resolve Deployment→ReplicaSet→Pod ownership |
+| apps | `statefulsets` | `get` | fetch a StatefulSet focus or resolve direct StatefulSet→Pod ownership |
 | autoscaling | `horizontalpodautoscalers` | `list` | discover HPAs whose exact scale target is a collected Deployment |
 | discovery.k8s.io | `endpointslices` | `list` | inspect endpoint readiness for a Service |
 | core, cluster-scoped | `nodes` | `get` | inspect pressure conditions and establish the kubelet version for the exact Node hosting a collected Pod |
@@ -48,25 +50,27 @@ in its findings.
 
 ### Operations by entry point
 
-The aggregated Role below is convenient when all three inspect commands are
+The aggregated Role below is convenient when all four inspect commands are
 allowed. A narrower grant can follow this table (`—` means no current call):
 
-| Resource / endpoint | Service focus | Deployment focus | Pod focus |
-|---|---|---|---|
-| non-resource `/version` | `get` | `get` | `get` |
-| `services` | `get` | `list` | `list` |
-| `pods` | `list` | `list` | `get` |
-| `configmaps` | `get` | `get` | `get` |
-| `persistentvolumeclaims` | `get` | `get` | `get` |
-| `events` | `list` | `list` | `list` |
-| `deployments` | `get` | `get` | `get` |
-| `replicasets` | `get` | `list` | `get` |
-| `horizontalpodautoscalers.autoscaling` | conditional `list` | `list` | conditional `list` |
-| `endpointslices.discovery.k8s.io` | `list` | `list` | `list` |
-| cluster-scoped `nodes` | optional `get` | optional `get` | optional `get` |
+| Resource / endpoint | Service focus | Deployment focus | StatefulSet focus | Pod focus |
+|---|---|---|---|---|
+| non-resource `/version` | `get` | `get` | `get` | `get` |
+| `services` | `get` | `list` | `list` | `list` |
+| `pods` | `list` | `list` | `list` | `get` |
+| `configmaps` | `get` | `get` | `get` | `get` |
+| `persistentvolumeclaims` | `get` | `get` | `get` | `get` |
+| `events` | `list` | `list` | `list` | `list` |
+| `deployments` | conditional `get` | `get` | — | conditional `get` |
+| `replicasets` | conditional `get` | `list` | — | conditional `get` |
+| `statefulsets` | conditional `get` | — | `get` | conditional `get` |
+| `horizontalpodautoscalers.autoscaling` | conditional `list` | `list` | — | conditional `list` |
+| `endpointslices.discovery.k8s.io` | `list` | `list` | `list` | `list` |
+| cluster-scoped `nodes` | optional `get` | optional `get` | optional `get` | optional `get` |
 
-Service discovery for Deployment and Pod focus remains a namespace list
-because Kubernetes has no reverse query over `Service.spec.selector`.
+Service discovery for Deployment, StatefulSet, and Pod focus remains a
+namespace list because Kubernetes has no reverse query over
+`Service.spec.selector`.
 HPA discovery is also a namespace list because Kubernetes does not expose a
 field selector for `spec.scaleTargetRef`; Tuna makes that request only when the
 retained graph contains a Deployment and keeps only exact `apps/v1 Deployment`
@@ -111,7 +115,7 @@ rules:
     resources: ["events"]
     verbs: ["list"]
   - apiGroups: ["apps"]
-    resources: ["deployments"]
+    resources: ["deployments", "statefulsets"]
     verbs: ["get"]
   - apiGroups: ["apps"]
     resources: ["replicasets"]
@@ -180,24 +184,24 @@ The retained graph is focused, but two reverse-discovery operations are broader
 than ideal:
 
 - Services are listed across the namespace to discover which ones select a
-  Pod or Deployment-owned Pod.
+  Pod, Deployment-owned Pod, or StatefulSet-owned Pod.
 - HorizontalPodAutoscalers are listed across the namespace when the retained
   graph contains a Deployment, then filtered by exact `scaleTargetRef`.
 
-Deployment-owned ReplicaSets and Pods, and Service EndpointSlices, already use
-label selectors. Pod Events use exact involved-object field selectors and are
-requested only for related Pods that are not Ready. Future work should measure
-the cost of the remaining broad read and narrow it where the Kubernetes API
-supports a reliable query.
+Deployment-owned ReplicaSets and Pods, StatefulSet-owned Pods, and Service
+EndpointSlices already use label selectors. Pod Events use exact
+involved-object field selectors and are requested only for related Pods that
+are not Ready. Future work should measure the cost of the remaining broad read
+and narrow it where the Kubernetes API supports a reliable query.
 
 ## Failure semantics
 
 - Failure to fetch the focus object initially is a command error. Failure to
   re-read it after related collection is health-blocking incomplete evidence;
   rules are suspended and health is `unknown`.
-- A changed focus identity/revision or stale collected Deployment/ReplicaSet
-  generation suspends rule evaluation instead of turning a reconciliation
-  window into a diagnosis.
+- A changed focus identity/revision or stale collected
+  Deployment/ReplicaSet/StatefulSet generation suspends rule evaluation instead
+  of turning a reconciliation window into a diagnosis.
 - A populated but stale HPA `status.observedGeneration` suppresses only HPA
   findings and is reported as non-health-blocking partial evidence. The field's
   absence is tolerated because it is not populated throughout the reviewed
@@ -210,7 +214,7 @@ supports a reliable query.
   the API server or outside the rule's reviewed range.
 - EndpointSlice failure for a Service focus makes health `unknown` because
   endpoint health cannot be established.
-- Failure to discover or enrich related Pods, ReplicaSets, Services,
+- Failure to discover or enrich related Pods, ReplicaSets, StatefulSets, Services,
   HorizontalPodAutoscalers, Nodes, ConfigMaps, PersistentVolumeClaims, or Events
   is emitted as partial evidence.
   A rule must not treat that failure as object absence.

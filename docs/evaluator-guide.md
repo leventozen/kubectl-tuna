@@ -141,7 +141,8 @@ When you must share structure, preserve diagnostic meaning with consistent
 aliases:
 
 - selectors and labels (rewrite values consistently so relationships still match)
-- owner relationships (Deployment → ReplicaSet → Pod, Service selection)
+- owner relationships (Deployment → ReplicaSet → Pod, StatefulSet → Pod,
+  Service selection)
 - UID equality or inequality as consistent aliases when object identity matters
 - container identity
 - relevant status and conditions

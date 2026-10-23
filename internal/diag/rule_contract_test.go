@@ -119,6 +119,13 @@ func TestBuiltInRuleContracts(t *testing.T) {
 			negative: func() *graph.Graph { return deploymentAvailabilityContractGraph(1) },
 		},
 		{
+			rule: statefulSetUnavailableRule{},
+			positives: []positiveCase{{StatefulSetUnavailable, func() *graph.Graph {
+				return statefulSetAvailabilityContractGraph(0)
+			}}},
+			negative: func() *graph.Graph { return statefulSetAvailabilityContractGraph(1) },
+		},
+		{
 			rule: rolloutStuckRule{},
 			positives: []positiveCase{{RolloutStuck, func() *graph.Graph {
 				return rolloutContractGraph(corev1.ConditionFalse)
@@ -376,6 +383,34 @@ func deploymentAvailabilityContractGraph(available int32) *graph.Graph {
 		Status:     appsv1.DeploymentStatus{AvailableReplicas: available},
 	})
 	return g
+}
+
+func statefulSetAvailabilityContractGraph(available int32) *graph.Graph {
+	ref := graph.ResourceRef{Kind: "StatefulSet", Namespace: "ns", Name: "api"}
+	replicas := int32(1)
+	g := graph.New(ref)
+	g.AddNode(ref, &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "ns"},
+		Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
+		Status: appsv1.StatefulSetStatus{
+			AvailableReplicas: available,
+			CurrentRevision:   "api-old",
+			UpdateRevision:    "api-new",
+		},
+	})
+	return g
+}
+
+func TestStatefulSetUnavailableIgnoresScaledToZero(t *testing.T) {
+	g := statefulSetAvailabilityContractGraph(0)
+	n, ok := g.Node(g.Focus)
+	require.True(t, ok)
+	sts, ok := n.Object.(*appsv1.StatefulSet)
+	require.True(t, ok)
+	replicas := int32(0)
+	sts.Spec.Replicas = &replicas
+
+	require.Empty(t, statefulSetUnavailableRule{}.Evaluate(g))
 }
 
 func rolloutContractGraph(status corev1.ConditionStatus) *graph.Graph {

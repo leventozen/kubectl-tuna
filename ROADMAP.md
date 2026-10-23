@@ -40,20 +40,22 @@ symptom, and evidence Tuna could not collect.
 Tuna has a strong internal reliability baseline but almost no independent
 product validation:
 
-- 17 built-in rules own 21 finding types with direct positive and negative
+- 18 built-in rules own 22 finding types with direct positive and negative
   contracts.
-- Ten author-constructed fixture snapshots provide eleven inspections and one
+- Eleven author-constructed fixture snapshots provide twelve inspections and one
   healthy control.
-- Twelve author-constructed Kind scenarios provide thirteen phases when run and
-  target six distinct root-cause patterns (one also exercises cross-container isolation; one
-  also exercises same-name Pod Event identity; one also exercises a
-  multiple-ReplicaSet rollout boundary), one healthy control, one recovery
-  phase, one incomplete-RBAC abstention, and one cross-workload isolation
-  boundary. The previous ten-scenario set was observed live; the new
-  Pending-PVC and HPA-metrics scenarios await their first full remote matrix
-  observation.
+- Thirteen author-constructed Kind scenarios provide fourteen phases when run
+  and target six distinct root-cause patterns (one also exercises
+  cross-container isolation; one also exercises same-name Pod Event identity;
+  one also exercises a multiple-ReplicaSet rollout boundary; one exercises
+  direct StatefulSet
+  ownership), one healthy control, one recovery phase, one incomplete-RBAC
+  abstention, and one cross-workload isolation boundary. The twelve-scenario
+  set through Pending-PVC and HPA metrics has been observed green across the
+  current remote matrix; the new StatefulSet scenario awaits its first full
+  remote matrix observation.
   Repeating them across four Kubernetes minors validates compatibility
-  mechanics; it does not create 48 independent cases.
+  mechanics; it does not create 52 independent cases.
 - There are no sanitized field incidents and no completed external-operator
   trials yet.
 
@@ -151,7 +153,7 @@ evidence. Version tags and Krew remain behind Gates B and C.
 
 ## Gate A — Reliability baseline (internal baseline complete)
 
-The Service, Deployment, and Pod implementation has completed its internal
+The original Service, Deployment, and Pod implementation has completed its internal
 reliability checklist. This status is provisional rather than irreversible:
 any corpus or field case that exposes a factual rule error or false causal edge
 reopens Gate A immediately.
@@ -233,9 +235,10 @@ Additional completed reliability work:
   remain outside the default RBAC contract and prove that it never decodes
   payload data.
 - [x] Group equivalent replica-level findings in console output only when an
-  exact Deployment→ReplicaSet→Pod path, container identity, and causal shape
-  match. Keep every affected Pod visible and preserve per-Pod evidence in full
-  grouped findings; JSON findings, evidence, and causal IDs remain unchanged.
+  exact Deployment→ReplicaSet→Pod or StatefulSet→Pod path, container identity,
+  and causal shape match. Keep every affected Pod visible and preserve per-Pod
+  evidence in full grouped findings; JSON findings, evidence, and causal IDs
+  remain unchanged.
 - [x] Refactor CLI exit handling so health-to-status mapping is unit-testable
   without `os.Exit` in the diagnostic execution path.
 - [x] Bound version discovery by the inspection context and cover version
@@ -245,10 +248,11 @@ Additional completed reliability work:
 - [x] Re-read the focus resource after collecting related evidence. If its
   identity/revision changed, or the final read cannot establish stability,
   suspend all rule evaluation and return explicit `unknown` health.
-- [x] Suspend all rule evaluation while any collected Deployment or ReplicaSet
-  has `status.observedGeneration < metadata.generation`; this covers related
-  owner controllers as well as a Deployment focus. An unobserved spec update is
-  a controller transition, not evidence of an unavailable or stuck rollout.
+- [x] Suspend all rule evaluation while any collected Deployment, ReplicaSet,
+  or StatefulSet has `status.observedGeneration < metadata.generation`; this
+  covers related owner controllers as well as workload focus resources. An
+  unobserved spec update is a controller transition, not evidence of an
+  unavailable or stuck rollout.
 - [x] Define the bounded temporal-integrity policy for independently changing
   related resources. Do not add a blanket second collection pass or `watch`
   permission: partial revalidation cannot prove graph atomicity, while a full
@@ -283,7 +287,7 @@ whether the model survives Kubernetes behavior it was not authored around.
   scenarios; corpus precision and environment diversity remain open.
 - [x] Add a machine-readable seed-corpus manifest and harness that asserts
   exact root-cause sets, health, and partial state across existing fixtures.
-  All ten snapshots are explicitly labeled `synthetic-fixture`; they do not
+  All eleven snapshots are explicitly labeled `synthetic-fixture`; they do not
   count as real-cluster validation or satisfy the corpus-size target.
 - [x] Persist the exact API server build, Node kubelet versions, container
   runtimes, operating-system details, and distribution label with every e2e
@@ -419,22 +423,28 @@ More rules come after precision, and only when they deepen a causal chain.
 
 Likely next slices:
 
-- [ ] PVC Pending / missing storage into Pod scheduling symptoms. The focused
+- [x] PVC Pending / missing storage into Pod scheduling symptoms. The focused
   collector, bounded rule, exact `claims-storage` causal predicate, negative
   contracts, synthetic corpus case, RBAC documentation, and targeted Kind
-  scenario are implemented. Keep this open until the new scenario is observed
-  green across the current remote Kubernetes matrix; PersistentVolumes,
+  scenario are implemented and observed green across the current remote
+  Kubernetes matrix. PersistentVolumes,
   StorageClasses, CSI state, and mount/startup failures remain separate future
   slices.
 - [ ] HPA metric-unavailable and upper-limit state for exact target
   Deployments. The collector, `scales` edge, fail-closed structured-condition
   rule, RBAC documentation, negative contracts, synthetic corpus case, and
-  metric-unavailable Kind scenario are implemented. Findings remain standalone
-  risks because neither condition proves workload outage. Keep this open until
-  the new scenario is green across the current remote Kubernetes matrix; a
-  deterministic live upper-limit reproduction also remains open.
-- StatefulSet ownership and rollout semantics, designed independently from
-  Deployment assumptions.
+  metric-unavailable Kind scenario are implemented and observed green across
+  the current remote Kubernetes matrix. Findings remain standalone risks
+  because neither condition proves workload outage. A deterministic live
+  upper-limit reproduction remains open.
+- [ ] StatefulSet ownership and availability, designed independently from
+  Deployment assumptions. The focus collector, direct `owns` causal path,
+  fail-closed controller freshness, `statefulset-unavailable` rule, negative
+  contract, synthetic corpus case, RBAC documentation, and targeted Kind
+  scenario are implemented. Tuna deliberately does not infer a stuck rollout
+  from revisions or replica counts because StatefulSet has no Deployment-style
+  progress deadline. Keep this open until the new scenario is observed green
+  across the current remote Kubernetes matrix.
 - Job/CronJob failure lifecycle.
 
 Each slice requires its own API semantics review, permission impact, positive

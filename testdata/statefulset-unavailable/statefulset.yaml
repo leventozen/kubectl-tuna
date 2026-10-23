@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database
+  namespace: data
+  uid: statefulset-database
+  resourceVersion: "10"
+  generation: 2
+spec:
+  serviceName: database
+  replicas: 1
+  selector:
+    matchLabels:
+      app: database
+  template:
+    metadata:
+      labels:
+        app: database
+    spec:
+      containers:
+        - name: database
+          image: invalid@@image
+status:
+  observedGeneration: 2
+  replicas: 1
+  currentReplicas: 0
+  updatedReplicas: 1
+  readyReplicas: 0
+  availableReplicas: 0
+  currentRevision: database-old
+  updateRevision: database-new
