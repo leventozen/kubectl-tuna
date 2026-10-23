@@ -52,12 +52,10 @@ product validation:
   isolates historical CronJob failures from the uniquely latest run), one
   strict healthy control, one recovery phase, one historical-failure isolation
   phase, one incomplete-RBAC abstention, and one cross-workload isolation
-  boundary. The fourteen-scenario set through
-  StatefulSet and Job has been observed green across the current remote
-  matrix; the new CronJob latest-run scenario awaits its first full remote
-  matrix observation.
+  boundary. The complete fifteen-scenario set has been observed green across
+  the current remote matrix, including CronJob latest-run isolation.
   Repeating them across four Kubernetes minors validates compatibility
-  mechanics; it does not create 56 independent cases.
+  mechanics; it does not create 60 independent cases.
 - There are no sanitized field incidents and no completed external-operator
   trials yet.
 
@@ -458,14 +456,14 @@ Likely next slices:
   Kind scenario are implemented and observed green across the current remote
   matrix. Pod→Job causality is intentionally limited to a failed exact-owned
   Pod exhausting an explicit zero retry budget.
-- [ ] CronJob latest-run lifecycle. CronJob focus, exact UID ownership,
+- [x] CronJob latest-run lifecycle. CronJob focus, exact UID ownership,
   controller-authored scheduled-timestamp ordering, historical-failure
   isolation, fail-closed ambiguity handling, a dedicated finding and causal
   edge, synthetic corpus coverage, RBAC documentation, and a two-phase targeted
   Kind scenario are implemented. Retained historical failures do not make a
   newer successful or active run look broken, and schedule arithmetic is not
-  guessed from wall-clock time. Keep this open until the new scenario is
-  observed green across the current remote Kubernetes matrix.
+  guessed from wall-clock time. The complete behavior is observed green across
+  the current remote Kubernetes matrix.
 
 Each slice requires its own API semantics review, permission impact, positive
 and negative fixtures, and real-cluster reproduction. NetworkPolicy, RBAC, and

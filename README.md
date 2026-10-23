@@ -243,8 +243,8 @@ make e2e E2E_CASE=healthy-service
 
 `make e2e-full` is reserved for an explicit integration milestone. CI runs the
 complete scenario set across the configured Kubernetes-version matrix.
-The scenario set through StatefulSet and Job has been observed green across
-that matrix; the new CronJob scenario still needs its first remote observation.
+The complete scenario set, including CronJob latest-run isolation, has been
+observed green across that matrix.
 
 Additional fixture and adversarial tests cover healthy state, missing ConfigMaps,
 ambiguous SIGKILL signals, eviction, EndpointSlice semantics, API failures, and

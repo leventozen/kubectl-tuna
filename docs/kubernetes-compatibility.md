@@ -153,7 +153,9 @@ claim: adding a field or API introduced after 1.36 requires a separate dependenc
 decision and compatibility test.
 
 The review established eligibility for the matrix, not support. The full e2e
-contract through StatefulSet and Job passed on the exact 1.34.11, 1.35.8,
-1.36.4, and 1.37.0 images, and its minimized evidence is preserved in the
-durable baseline set. Diagnostics added later, beginning with CronJob, require
-their own full remote observation before joining that mechanical validation.
+contract, including CronJob latest-run isolation, passed on the exact 1.34.11,
+1.35.8, 1.36.4, and 1.37.0 images. Minimized evidence through StatefulSet and
+Job is preserved in the durable baseline set; the newer CronJob observation is
+currently retained in CI artifacts and has not been relabeled as part of that
+older set. Diagnostics added later still require their own full remote
+observation before joining mechanical validation.
