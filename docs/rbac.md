@@ -31,6 +31,7 @@ is documented in [`temporal-integrity.md`](temporal-integrity.md).
 | core | `services` | `get`, `list` | fetch a Service focus; discover Services selecting a Pod/workload |
 | core | `pods` | `get`, `list` | fetch a Pod focus; discover selected or owned Pods |
 | core | `configmaps` | `get` | establish whether a non-optional referenced ConfigMap exists |
+| core | `persistentvolumeclaims` | `get` | inspect claims named directly by collected Pod volumes |
 | core | `events` | `list` | fetch supporting events with exact kind/name field selectors for related non-Ready Pods |
 | apps | `deployments` | `get` | fetch a Deployment focus or resolve a Pod owner |
 | apps | `replicasets` | `get`, `list` | resolve Deployment→ReplicaSet→Pod ownership |
@@ -51,6 +52,7 @@ allowed. A narrower grant can follow this table (`—` means no current call):
 | `services` | `get` | `list` | `list` |
 | `pods` | `list` | `list` | `get` |
 | `configmaps` | `get` | `get` | `get` |
+| `persistentvolumeclaims` | `get` | `get` | `get` |
 | `events` | `list` | `list` | `list` |
 | `deployments` | `get` | `get` | `get` |
 | `replicasets` | `get` | `list` | `get` |
@@ -92,7 +94,7 @@ rules:
     resources: ["services", "pods"]
     verbs: ["get", "list"]
   - apiGroups: [""]
-    resources: ["configmaps"]
+    resources: ["configmaps", "persistentvolumeclaims"]
     verbs: ["get"]
   - apiGroups: [""]
     resources: ["events"]
@@ -189,7 +191,10 @@ supports a reliable query.
 - EndpointSlice failure for a Service focus makes health `unknown` because
   endpoint health cannot be established.
 - Failure to discover or enrich related Pods, ReplicaSets, Services, Nodes,
-  ConfigMaps, or Events is emitted as partial evidence. A rule must not treat
-  that failure as object absence.
+  ConfigMaps, PersistentVolumeClaims, or Events is emitted as partial evidence.
+  A rule must not treat that failure as object absence.
 - A definitive ConfigMap `NotFound` response is evidence of a missing
   reference; a timeout or `Forbidden` response is not.
+- A definitive PersistentVolumeClaim `NotFound` response is evidence of a
+  missing claim; a timeout or `Forbidden` response is unknown. Tuna does not
+  request PersistentVolumes, StorageClasses, or CSI resources in this slice.

@@ -63,7 +63,9 @@ const (
 	RolloutStuck          FindingType = "rollout-stuck"
 
 	// Scheduling and resources
-	PodUnschedulable FindingType = "pod-unschedulable"
+	PodUnschedulable             FindingType = "pod-unschedulable"
+	PersistentVolumeClaimMissing FindingType = "persistent-volume-claim-missing"
+	PersistentVolumeClaimPending FindingType = "persistent-volume-claim-pending"
 
 	// Node and eviction
 	NodePressure FindingType = "node-pressure"

@@ -220,7 +220,8 @@ func (c *Collector) CollectDeployment(ctx context.Context, namespace, name strin
 }
 
 // addPod adds a Pod, its owner chain (ReplicaSet → Deployment), and its
-// ConfigMap/Secret references to the graph. Secret payloads are never read.
+// ConfigMap/Secret/PersistentVolumeClaim references to the graph. Secret
+// payloads are never read.
 func (c *Collector) addPod(ctx context.Context, g *graph.Graph, pod *corev1.Pod) graph.ResourceRef {
 	podRef := graph.ResourceRef{Kind: "Pod", Namespace: pod.Namespace, Name: pod.Name}
 	g.AddNode(podRef, pod)
@@ -268,6 +269,7 @@ func (c *Collector) addPod(ctx context.Context, g *graph.Graph, pod *corev1.Pod)
 	// ConfigMap references are checked for existence. Secret references remain
 	// explicitly unknown because a typed GET would return their data payload.
 	c.addConfigRefs(ctx, g, pod, podRef)
+	c.addStorageRefs(ctx, g, pod, podRef)
 
 	// The Node the Pod is scheduled on: node conditions are evidence for
 	// pressure/eviction diagnoses.
@@ -554,6 +556,38 @@ func (c *Collector) addConfigRefs(ctx context.Context, g *graph.Graph, pod *core
 				}
 			}
 		}
+	}
+}
+
+// addStorageRefs resolves only PersistentVolumeClaims named directly by Pod
+// volumes. The claim lookup is namespaced and read-only; PersistentVolumes and
+// StorageClasses are deliberately outside this first storage slice.
+func (c *Collector) addStorageRefs(ctx context.Context, g *graph.Graph, pod *corev1.Pod, podRef graph.ResourceRef) {
+	for _, volume := range pod.Spec.Volumes {
+		if volume.PersistentVolumeClaim == nil || volume.PersistentVolumeClaim.ClaimName == "" {
+			continue
+		}
+		name := volume.PersistentVolumeClaim.ClaimName
+		ref := graph.ResourceRef{Kind: "PersistentVolumeClaim", Namespace: pod.Namespace, Name: name}
+		if _, exists := g.Node(ref); exists {
+			g.AddEdge(podRef, ref, graph.EdgeClaimsStorage)
+			continue
+		}
+
+		claim, err := c.client.CoreV1().PersistentVolumeClaims(pod.Namespace).Get(ctx, name, metav1.GetOptions{})
+		switch {
+		case apierrors.IsNotFound(err):
+			g.AddNode(ref, nil)
+		case err != nil:
+			g.AddUnknownNode(ref)
+			g.AddCollectionIssue(graph.CollectionIssue{
+				Source: graph.SourcePersistentVolumeClaim, Resource: ref,
+				Message: fmt.Sprintf("could not get referenced PersistentVolumeClaim: %v", err),
+			})
+		default:
+			g.AddNode(ref, claim)
+		}
+		g.AddEdge(podRef, ref, graph.EdgeClaimsStorage)
 	}
 }
 

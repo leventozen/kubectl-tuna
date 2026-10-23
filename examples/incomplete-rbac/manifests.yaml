@@ -23,7 +23,7 @@ rules:
     resources: ["services", "pods"]
     verbs: ["get", "list"]
   - apiGroups: [""]
-    resources: ["configmaps"]
+    resources: ["configmaps", "persistentvolumeclaims"]
     verbs: ["get"]
   - apiGroups: [""]
     resources: ["events"]

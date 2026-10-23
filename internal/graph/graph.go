@@ -32,11 +32,12 @@ func (r ResourceRef) String() string {
 type EdgeType string
 
 const (
-	EdgeOwns        EdgeType = "owns"         // Deployment owns ReplicaSet, ReplicaSet owns Pod
-	EdgeSelects     EdgeType = "selects"      // Service selects Pod
-	EdgeRoutesTo    EdgeType = "routes-to"    // Service routes to EndpointSlice
-	EdgeReferences  EdgeType = "references"   // Pod references ConfigMap/Secret
-	EdgeScheduledOn EdgeType = "scheduled-on" // Pod scheduled on Node
+	EdgeOwns          EdgeType = "owns"           // Deployment owns ReplicaSet, ReplicaSet owns Pod
+	EdgeSelects       EdgeType = "selects"        // Service selects Pod
+	EdgeRoutesTo      EdgeType = "routes-to"      // Service routes to EndpointSlice
+	EdgeReferences    EdgeType = "references"     // Pod references ConfigMap/Secret
+	EdgeClaimsStorage EdgeType = "claims-storage" // Pod uses a PersistentVolumeClaim as a volume
+	EdgeScheduledOn   EdgeType = "scheduled-on"   // Pod scheduled on Node
 )
 
 // Node is a Kubernetes resource inside the graph. Object holds the typed
@@ -75,19 +76,20 @@ type CollectionIssue struct {
 }
 
 const (
-	SourceEndpointSlices    = "endpointslices"
-	SourceEvents            = "events"
-	SourcePod               = "pod"
-	SourceService           = "service"
-	SourceReplicaSet        = "replicaset"
-	SourceDeployment        = "deployment"
-	SourceNode              = "node"
-	SourceConfigMap         = "configmap"
-	SourceSecret            = "secret"
-	SourceServerVersion     = "kubernetes-version"
-	SourceTemporalIntegrity = "temporal-integrity"
-	SourceRuleCompatibility = "rule-compatibility"
-	SourceRuleExecution     = "rule-execution"
+	SourceEndpointSlices        = "endpointslices"
+	SourceEvents                = "events"
+	SourcePod                   = "pod"
+	SourceService               = "service"
+	SourceReplicaSet            = "replicaset"
+	SourceDeployment            = "deployment"
+	SourceNode                  = "node"
+	SourceConfigMap             = "configmap"
+	SourcePersistentVolumeClaim = "persistentvolumeclaim"
+	SourceSecret                = "secret"
+	SourceServerVersion         = "kubernetes-version"
+	SourceTemporalIntegrity     = "temporal-integrity"
+	SourceRuleCompatibility     = "rule-compatibility"
+	SourceRuleExecution         = "rule-execution"
 )
 
 // ClusterInfo records the Kubernetes API server version that supplied the

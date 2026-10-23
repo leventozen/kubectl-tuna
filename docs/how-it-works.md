@@ -27,9 +27,9 @@ that focus.
 
 | Focus | Relationships collected |
 |---|---|
-| Service | selected Pods, their owner chains and Nodes, the Service's EndpointSlices, ConfigMap/Secret references, related events |
-| Deployment | owned ReplicaSets and Pods, Services selecting those Pods, their EndpointSlices, Nodes, configuration references, related events |
-| Pod | owner chain, scheduled Node, Services selecting the Pod, their EndpointSlices, configuration references, related events |
+| Service | selected Pods, their owner chains and Nodes, the Service's EndpointSlices, ConfigMap/Secret/PVC references, related events |
+| Deployment | owned ReplicaSets and Pods, Services selecting those Pods, their EndpointSlices, Nodes, configuration and PVC references, related events |
+| Pod | owner chain, scheduled Node, Services selecting the Pod, their EndpointSlices, configuration and PVC references, related events |
 
 “Focused” describes the retained graph, not a promise that every Kubernetes
 API call is object-scoped. Discovering reverse relationships such as “which
@@ -105,6 +105,7 @@ Service    --selects------> Pod
 Service    --routes-to----> EndpointSlice
 Deployment --owns---------> ReplicaSet --owns---------> Pod
 Pod        --references---> ConfigMap / Secret reference
+Pod        --claims-storage-> PersistentVolumeClaim
 Pod        --scheduled-on-> Node
 ```
 
@@ -174,6 +175,9 @@ pod-not-ready
 
 node-pressure
   -- that Pod is scheduled on that Node --> pod-evicted
+
+persistent-volume-claim-pending
+  -- that Pod claims the only unresolved PVC + scheduler names storage --> pod-unschedulable
 ```
 
 `deployment-unavailable` accepts any exact Deployment→ReplicaSet→Pod ownership
@@ -188,6 +192,14 @@ caused the other” fallback. If the exact predicate cannot be proven, both
 findings remain unlinked. A root cause candidate is therefore the most upstream
 finding in the established chain, not an assertion that Tuna can see beyond
 its evidence boundary.
+
+PVC Pending is deliberately not enough for that causal link. A
+`WaitForFirstConsumer` StorageClass can keep a healthy claim Pending until Pod
+scheduling. Tuna upgrades Pending from risk to a current scheduling root only
+when the Pod has exactly one unresolved claim and its `PodScheduled=False`
+condition with reason `Unschedulable` identifies an unbound claim. Multiple
+unresolved claims remain unlinked because the available evidence cannot identify which claim is
+the blocker.
 
 ### 7. Calculate focus health separately from findings
 

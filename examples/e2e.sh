@@ -33,6 +33,7 @@ ALL_E2E_CASES=(
 	multiple-replicaset-rollout
 	service-selector-mismatch
 	failed-scheduling
+	pending-pvc
 	oomkilled
 )
 
@@ -1153,6 +1154,9 @@ run_selected_case() {
 		;;
 	failed-scheduling)
 		check failed-scheduling deployment analytics 90 pod-unschedulable
+		;;
+	pending-pvc)
+		check pending-pvc deployment storage-api 120 persistent-volume-claim-pending
 		;;
 	oomkilled)
 		check oomkilled deployment billing 240 container-oomkilled

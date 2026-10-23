@@ -40,18 +40,19 @@ symptom, and evidence Tuna could not collect.
 Tuna has a strong internal reliability baseline but almost no independent
 product validation:
 
-- 15 built-in rules own 17 finding types with direct positive and negative
+- 16 built-in rules own 19 finding types with direct positive and negative
   contracts.
-- Eight author-constructed fixture snapshots provide nine inspections and one
+- Nine author-constructed fixture snapshots provide ten inspections and one
   healthy control.
-- Ten author-constructed Kind scenarios provide eleven phases: five distinct
-  live root-cause patterns (one also exercises cross-container isolation; one
+- Eleven author-constructed Kind scenarios provide twelve phases when run and
+  target six distinct root-cause patterns (one also exercises cross-container isolation; one
   also exercises same-name Pod Event identity; one also exercises a
   multiple-ReplicaSet rollout boundary), one healthy control, one recovery
   phase, one incomplete-RBAC abstention, and one cross-workload isolation
-  boundary.
-  Repeating them across three Kubernetes minors validates compatibility
-  mechanics; it does not create 30 independent cases.
+  boundary. The previous ten-scenario set was observed live; the new
+  Pending-PVC scenario awaits its first full remote matrix observation.
+  Repeating them across four Kubernetes minors validates compatibility
+  mechanics; it does not create 44 independent cases.
 - There are no sanitized field incidents and no completed external-operator
   trials yet.
 
@@ -281,7 +282,7 @@ whether the model survives Kubernetes behavior it was not authored around.
   scenarios; corpus precision and environment diversity remain open.
 - [x] Add a machine-readable seed-corpus manifest and harness that asserts
   exact root-cause sets, health, and partial state across existing fixtures.
-  All eight snapshots are explicitly labeled `synthetic-fixture`; they do not
+  All nine snapshots are explicitly labeled `synthetic-fixture`; they do not
   count as real-cluster validation or satisfy the corpus-size target.
 - [x] Persist the exact API server build, Node kubelet versions, container
   runtimes, operating-system details, and distribution label with every e2e
@@ -417,7 +418,13 @@ More rules come after precision, and only when they deepen a causal chain.
 
 Likely next slices:
 
-- PVC Pending / unbound storage into Pod scheduling or startup symptoms.
+- [ ] PVC Pending / missing storage into Pod scheduling symptoms. The focused
+  collector, bounded rule, exact `claims-storage` causal predicate, negative
+  contracts, synthetic corpus case, RBAC documentation, and targeted Kind
+  scenario are implemented. Keep this open until the new scenario is observed
+  green across the current remote Kubernetes matrix; PersistentVolumes,
+  StorageClasses, CSI state, and mount/startup failures remain separate future
+  slices.
 - HPA metric unavailable and at-limit state into Deployment capacity symptoms.
 - StatefulSet ownership and rollout semantics, designed independently from
   Deployment assumptions.

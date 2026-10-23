@@ -141,6 +141,7 @@ rule, correlation, health, and rendering walkthrough.
 | Traffic path | `service-selector-no-pods`, `service-target-port-mismatch`, `service-no-ready-endpoints`, `service-terminating-endpoints-only`, `readiness-probe-port-mismatch`, `readiness-probe-failing`, `pod-not-ready` |
 | Workload lifecycle | `crashloop-backoff`, `image-pull-failure`, `missing-config-reference`, `container-oomkilled`, `container-sigkill`, `deployment-unavailable` |
 | Scheduling | `pod-unschedulable` (resource shortage, untolerated taint, affinity/selector mismatch) |
+| Storage | `persistent-volume-claim-missing`, `persistent-volume-claim-pending` (Pending is a risk unless exact scheduler evidence proves it is blocking) |
 | Node and eviction | `node-pressure`, `pod-evicted` |
 | Rollout | `rollout-stuck` |
 
@@ -181,6 +182,7 @@ make demo SCENARIO=broken-readiness-port
 make demo SCENARIO=service-selector-mismatch
 make demo SCENARIO=oomkilled
 make demo SCENARIO=failed-scheduling
+make demo SCENARIO=pending-pvc
 ```
 
 The broken scenarios run against Kind in `examples/e2e.sh`, together with
@@ -188,7 +190,9 @@ a strict healthy control, a broken-to-recovered readiness flow, a healthy
 Service inspected through an identity that is deliberately denied EndpointSlice
 access, two Deployments deliberately selected by the same Service, a
 same-name Pod recreation that must not inherit a previous incarnation's Events,
-and a multiple-ReplicaSet rollout boundary. The RBAC case must return `unknown`
+and a multiple-ReplicaSet rollout boundary. A Pending-PVC case verifies the
+exact PVC→Pod scheduling chain without treating normal delayed binding as a
+proven outage. The RBAC case must return `unknown`
 with explicit partial evidence and no false zero-endpoint finding. The
 shared-Service case proves that a broken Pod explains only its owning Deployment
 even when another selected workload has its own unavailable finding. A
@@ -228,7 +232,7 @@ every related Node's kubelet version. Mixed kubelet minors inside the reviewed
 window are allowed; unavailable, newer-than-server, or unreviewed kubelets skip
 only those rules and make the result explicitly `unknown`.
 
-`make corpus` runs the machine-readable seed-corpus contract. Its current eight
+`make corpus` runs the machine-readable seed-corpus contract. Its current nine
 snapshots are author-constructed fake-client fixtures, not real-cluster
 evidence; one is a healthy control. Evidence classes, case-acceptance rules,
 and the intentionally still-open 25-case/10-control target are documented in
@@ -264,6 +268,10 @@ field-validation cases.
   fetched. The default RBAC contract intentionally keeps it unknown: even a
   metadata-only request would require `get` permission that can fetch the full
   payload outside Tuna.
+- PVC diagnostics read only claims named directly by collected Pod volumes.
+  Tuna does not currently read PersistentVolumes, StorageClasses, CSI objects,
+  or PVC Events, so a Pending claim without exact scheduler storage evidence is
+  reported as risk rather than a confirmed scheduling root.
 - Equivalent replica findings are grouped only in console presentation; JSON
   deliberately retains every per-Pod finding and evidence item.
 - “Root cause candidate” means the most upstream finding supported by the

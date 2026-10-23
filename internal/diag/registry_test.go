@@ -99,7 +99,8 @@ func TestDefaultRegistryDeclaresEveryBuiltInFindingType(t *testing.T) {
 	expected := []string{
 		string(ContainerOOMKilled), string(ContainerSIGKILL), string(CrashLoopBackOff),
 		string(DeploymentUnavailable), string(ImagePullFailure), string(MissingConfigRef),
-		string(NodePressure), string(PodEvicted), string(PodNotReady), string(PodUnschedulable),
+		string(NodePressure), string(PersistentVolumeClaimMissing), string(PersistentVolumeClaimPending),
+		string(PodEvicted), string(PodNotReady), string(PodUnschedulable),
 		string(ReadinessProbeFailing), string(ReadinessProbePortInvalid), string(RolloutStuck),
 		string(ServiceNoReadyEndpoints), string(ServiceSelectorNoPods),
 		string(ServiceTargetPortMismatch), string(ServiceTerminatingOnly),

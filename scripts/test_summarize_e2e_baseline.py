@@ -28,7 +28,7 @@ class SummarizeE2EBaselineTest(unittest.TestCase):
             "tuna": {
                 "sourceCommit": "a" * 40,
                 "sourceDirty": False,
-                "goVersion": "go1.26.6",
+                "goVersion": "go1.26.10",
             },
             "execution": {
                 "expectedKubernetes": "1.37.0",
@@ -69,7 +69,7 @@ class SummarizeE2EBaselineTest(unittest.TestCase):
                     "rootCause": False,
                 },
             ],
-            "rules": {"evaluated": 15},
+            "rules": {"evaluated": 16},
         }
 
     def tearDown(self):

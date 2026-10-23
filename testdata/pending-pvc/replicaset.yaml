@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: storage-api-rs
+  namespace: storage
+  uid: replicaset-storage-api
+  generation: 1
+  labels:
+    app: storage-api
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: storage-api
+      uid: deployment-storage-api
+      controller: true
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storage-api
+  template:
+    metadata:
+      labels:
+        app: storage-api
+    spec:
+      containers:
+        - name: app
+          image: example/storage-api:v1
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: storage-api-data
+status:
+  observedGeneration: 1
+  replicas: 1

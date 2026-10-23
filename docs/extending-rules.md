@@ -90,7 +90,7 @@ contract, in this order:
    confidence, suppress findings, or add arbitrary causal edges.
 4. **Constrained causality later.** If needed, packs may declare links only from
    a small vocabulary of core-owned predicates such as same-resource,
-   same-container, `selects`, `owns`, or `scheduled-on`.
+   same-container, `selects`, `owns`, `claims-storage`, or `scheduled-on`.
 5. **Advanced out-of-process protocol only if justified.** Rules that cannot be
    expressed declaratively may eventually use a versioned stdin/stdout protocol
    with an explicit user-installed executable, handshake, timeout, output-size

@@ -29,6 +29,8 @@ var causalRules = []causalRule{
 	{ContainerSIGKILL, PodNotReady, currentTerminationMatchesFinding},
 	{CrashLoopBackOff, PodNotReady, sameResource},
 	{ImagePullFailure, PodNotReady, sameResource},
+	{PersistentVolumeClaimMissing, PodUnschedulable, storageClaimBlocksPod},
+	{PersistentVolumeClaimPending, PodUnschedulable, storageClaimBlocksPod},
 	{PodUnschedulable, PodNotReady, sameResource},
 	{PodNotReady, ServiceNoReadyEndpoints, selectedByService},
 	{PodNotReady, DeploymentUnavailable, ownedByDeployment},

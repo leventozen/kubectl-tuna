@@ -2,7 +2,7 @@
 # Deploy a broken scenario to the current cluster and diagnose it with Tuna.
 #
 # Usage: examples/run-demo.sh <scenario> [--keep]
-#   scenarios: broken-readiness-port | service-selector-mismatch | oomkilled | failed-scheduling
+#   scenarios: broken-readiness-port | service-selector-mismatch | oomkilled | failed-scheduling | pending-pvc
 set -euo pipefail
 
 SCENARIO="${1:?usage: run-demo.sh <scenario> [--keep]}"
@@ -24,6 +24,11 @@ oomkilled)
 failed-scheduling)
 	KIND="deployment"
 	NAME="analytics"
+	WAIT=20
+	;;
+pending-pvc)
+	KIND="deployment"
+	NAME="storage-api"
 	WAIT=20
 	;;
 *)

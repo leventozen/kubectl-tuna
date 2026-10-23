@@ -15,6 +15,7 @@ const (
 	RuleFamilyTraffic    RuleFamily = "traffic"
 	RuleFamilyWorkload   RuleFamily = "workload"
 	RuleFamilyScheduling RuleFamily = "scheduling"
+	RuleFamilyStorage    RuleFamily = "storage"
 	RuleFamilyNode       RuleFamily = "node"
 	RuleFamilyRollout    RuleFamily = "rollout"
 )
@@ -165,7 +166,7 @@ func validateVersionSources(sources []KubernetesVersionSource) error {
 
 func knownRuleFamily(family RuleFamily) bool {
 	switch family {
-	case RuleFamilyTraffic, RuleFamilyWorkload, RuleFamilyScheduling, RuleFamilyNode, RuleFamilyRollout:
+	case RuleFamilyTraffic, RuleFamilyWorkload, RuleFamilyScheduling, RuleFamilyStorage, RuleFamilyNode, RuleFamilyRollout:
 		return true
 	default:
 		return false

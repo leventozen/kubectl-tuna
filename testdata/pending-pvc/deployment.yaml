@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storage-api
+  namespace: storage
+  uid: deployment-storage-api
+  resourceVersion: "10"
+  generation: 1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storage-api
+  template:
+    metadata:
+      labels:
+        app: storage-api
+    spec:
+      containers:
+        - name: app
+          image: example/storage-api:v1
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: storage-api-data
+status:
+  observedGeneration: 1
+  replicas: 1
+  unavailableReplicas: 1

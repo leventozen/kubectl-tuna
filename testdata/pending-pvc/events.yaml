@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Event
+metadata:
+  name: storage-api-failed-scheduling
+  namespace: storage
+involvedObject:
+  apiVersion: v1
+  kind: Pod
+  namespace: storage
+  name: storage-api-rs-abcde
+  uid: pod-storage-api
+reason: FailedScheduling
+message: "0/1 nodes are available: pod has unbound immediate PersistentVolumeClaims."
+type: Warning
+count: 3

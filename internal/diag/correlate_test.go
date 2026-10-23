@@ -72,6 +72,88 @@ func TestCorrelationRequiresSameContainer(t *testing.T) {
 	require.Equal(t, []*Finding{crash}, oom.Causes)
 }
 
+func TestPendingClaimExplainsOnlyItsExactStorageBlockedPod(t *testing.T) {
+	claimRef := graph.ResourceRef{Kind: "PersistentVolumeClaim", Namespace: "ns", Name: "data"}
+	blockedPodRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "blocked"}
+	otherPodRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "other"}
+	g := graph.New(blockedPodRef)
+	g.AddNode(claimRef, &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "data", Namespace: "ns"},
+		Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimPending},
+	})
+	g.AddNode(blockedPodRef, storageBlockedPod("blocked", "0/2 nodes are available: pod has unbound immediate PersistentVolumeClaims."))
+	g.AddNode(otherPodRef, storageBlockedPod("other", "0/2 nodes are available: Insufficient cpu."))
+	g.AddEdge(blockedPodRef, claimRef, graph.EdgeClaimsStorage)
+
+	pending := &Finding{Type: PersistentVolumeClaimPending, Resource: claimRef}
+	blocked := &Finding{Type: PodUnschedulable, Resource: blockedPodRef}
+	other := &Finding{Type: PodUnschedulable, Resource: otherPodRef}
+	Correlate([]*Finding{pending, blocked, other}, g)
+
+	require.Equal(t, []*Finding{blocked}, pending.Causes)
+	require.Equal(t, []*Finding{pending}, blocked.CausedBy)
+	require.Empty(t, other.CausedBy)
+}
+
+func TestPendingClaimFailsClosedWhenPodHasMultipleUnresolvedClaims(t *testing.T) {
+	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "blocked"}
+	claimA := graph.ResourceRef{Kind: "PersistentVolumeClaim", Namespace: "ns", Name: "data-a"}
+	claimB := graph.ResourceRef{Kind: "PersistentVolumeClaim", Namespace: "ns", Name: "data-b"}
+	g := graph.New(podRef)
+	g.AddNode(podRef, storageBlockedPod("blocked", "0/1 nodes are available: pod has unbound immediate PersistentVolumeClaims."))
+	for _, claimRef := range []graph.ResourceRef{claimA, claimB} {
+		g.AddNode(claimRef, &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: claimRef.Name, Namespace: "ns"},
+			Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimPending},
+		})
+		g.AddEdge(podRef, claimRef, graph.EdgeClaimsStorage)
+	}
+
+	pendingA := &Finding{Type: PersistentVolumeClaimPending, Resource: claimA}
+	pendingB := &Finding{Type: PersistentVolumeClaimPending, Resource: claimB}
+	unschedulable := &Finding{Type: PodUnschedulable, Resource: podRef}
+	Correlate([]*Finding{pendingA, pendingB, unschedulable}, g)
+
+	require.Empty(t, pendingA.Causes)
+	require.Empty(t, pendingB.Causes)
+	require.Empty(t, unschedulable.CausedBy)
+}
+
+func TestPendingClaimFailsClosedWhenAnotherClaimIsUnknown(t *testing.T) {
+	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "blocked"}
+	pendingRef := graph.ResourceRef{Kind: "PersistentVolumeClaim", Namespace: "ns", Name: "known-pending"}
+	unknownRef := graph.ResourceRef{Kind: "PersistentVolumeClaim", Namespace: "ns", Name: "rbac-hidden"}
+	g := graph.New(podRef)
+	g.AddNode(podRef, storageBlockedPod("blocked", "0/1 nodes are available: pod has unbound immediate PersistentVolumeClaims."))
+	g.AddNode(pendingRef, &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: pendingRef.Name, Namespace: "ns"},
+		Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimPending},
+	})
+	g.AddUnknownNode(unknownRef)
+	g.AddEdge(podRef, pendingRef, graph.EdgeClaimsStorage)
+	g.AddEdge(podRef, unknownRef, graph.EdgeClaimsStorage)
+
+	pending := &Finding{Type: PersistentVolumeClaimPending, Resource: pendingRef}
+	unschedulable := &Finding{Type: PodUnschedulable, Resource: podRef}
+	Correlate([]*Finding{pending, unschedulable}, g)
+
+	require.Empty(t, pending.Causes)
+	require.Empty(t, unschedulable.CausedBy, "unknown claim evidence must prevent a confident root attribution")
+}
+
+func storageBlockedPod(name, message string) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "ns"},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodPending,
+			Conditions: []corev1.PodCondition{{
+				Type: corev1.PodScheduled, Status: corev1.ConditionFalse,
+				Reason: corev1.PodReasonUnschedulable, Message: message,
+			}},
+		},
+	}
+}
+
 func TestCurrentOOMTerminationExplainsPodNotReadyWithoutCrashLoopSnapshot(t *testing.T) {
 	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api"}
 	g := graph.New(podRef)

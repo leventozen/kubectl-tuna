@@ -41,6 +41,7 @@ func (podUnschedulableRule) Evaluate(g *graph.Graph) []*Finding {
 
 		// Classify from the scheduler message (secondary evidence only).
 		msg := cond.Message
+		msgLower := strings.ToLower(msg)
 		switch {
 		case strings.Contains(msg, "Insufficient cpu") || strings.Contains(msg, "Insufficient memory"):
 			f.Detail = "No node has enough allocatable resources for this Pod's requests."
@@ -59,6 +60,12 @@ func (podUnschedulableRule) Evaluate(g *graph.Graph) []*Finding {
 			f.Detail = "The Pod's nodeSelector/affinity rules match no available node."
 			f.Recommendations = []string{
 				"Compare the Pod's nodeSelector and affinity with node labels: kubectl get nodes --show-labels",
+			}
+		case strings.Contains(msgLower, "persistentvolumeclaim"):
+			f.Detail = "The scheduler reports that a PersistentVolumeClaim constraint prevents placement. Tuna links a claim as the root only when the exact Pod-to-claim relationship and a single unresolved claim make that attribution unambiguous."
+			f.Recommendations = []string{
+				"Inspect the Pod's PersistentVolumeClaims and their provisioning events.",
+				"Verify StorageClass binding mode, provisioner availability, requested capacity, access modes, and topology constraints.",
 			}
 		default:
 			f.Detail = "See the scheduler message in the evidence for the specific constraint."

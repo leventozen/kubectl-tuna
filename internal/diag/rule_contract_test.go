@@ -132,6 +132,26 @@ func TestBuiltInRuleContracts(t *testing.T) {
 			negative: func() *graph.Graph { return schedulingContractGraph("SchedulingGated") },
 		},
 		{
+			rule: persistentVolumeClaimRule{},
+			positives: []positiveCase{
+				{PersistentVolumeClaimMissing, func() *graph.Graph {
+					return storageClaimContractGraph(nil)
+				}},
+				{PersistentVolumeClaimPending, func() *graph.Graph {
+					return storageClaimContractGraph(&corev1.PersistentVolumeClaim{
+						ObjectMeta: metav1.ObjectMeta{Name: "data", Namespace: "ns"},
+						Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimPending},
+					})
+				}},
+			},
+			negative: func() *graph.Graph {
+				return storageClaimContractGraph(&corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{Name: "data", Namespace: "ns"},
+					Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
+				})
+			},
+		},
+		{
 			rule: nodePressureRule{},
 			positives: []positiveCase{{NodePressure, func() *graph.Graph {
 				return nodePressureContractGraph(corev1.ConditionTrue)
@@ -353,6 +373,31 @@ func schedulingContractGraph(reason string) *graph.Graph {
 		Type: corev1.PodScheduled, Status: corev1.ConditionFalse, Reason: reason,
 	}}
 	return graphWithPod(pod)
+}
+
+func storageClaimContractGraph(claim *corev1.PersistentVolumeClaim) *graph.Graph {
+	pod := contractPod()
+	pod.Status.Phase = corev1.PodPending
+	pod.Status.Conditions = []corev1.PodCondition{{
+		Type: corev1.PodScheduled, Status: corev1.ConditionFalse,
+		Reason:  corev1.PodReasonUnschedulable,
+		Message: "0/1 nodes are available: pod has unbound immediate PersistentVolumeClaims.",
+	}}
+	pod.Spec.Volumes = []corev1.Volume{{
+		Name: "data",
+		VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+			ClaimName: "data",
+		}},
+	}}
+	g := graphWithPod(pod)
+	claimRef := graph.ResourceRef{Kind: "PersistentVolumeClaim", Namespace: "ns", Name: "data"}
+	if claim == nil {
+		g.AddNode(claimRef, nil)
+	} else {
+		g.AddNode(claimRef, claim)
+	}
+	g.AddEdge(g.Focus, claimRef, graph.EdgeClaimsStorage)
+	return g
 }
 
 func nodePressureContractGraph(status corev1.ConditionStatus) *graph.Graph {

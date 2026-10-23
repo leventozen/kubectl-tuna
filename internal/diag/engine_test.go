@@ -180,6 +180,26 @@ func TestFailedScheduling(t *testing.T) {
 	}, chainTypes(root))
 }
 
+func TestPendingPersistentVolumeClaim(t *testing.T) {
+	res := evaluateScenario(t, "pending-pvc", "deployment", "storage", "storage-api")
+	require.Equal(t, diag.HealthDegraded, res.Health)
+	require.False(t, res.Partial)
+
+	require.Len(t, res.RootCauses, 1)
+	root := res.RootCauses[0]
+	require.Equal(t, diag.PersistentVolumeClaimPending, root.Type)
+	require.Equal(t, diag.ImpactCurrent, root.Impact)
+	require.Equal(t, diag.ConfidenceHigh, root.Confidence)
+	require.Equal(t, "PersistentVolumeClaim", root.Resource.Kind)
+
+	require.Equal(t, []diag.FindingType{
+		diag.PersistentVolumeClaimPending,
+		diag.PodUnschedulable,
+		diag.PodNotReady,
+		diag.DeploymentUnavailable,
+	}, chainTypes(root))
+}
+
 func TestMissingConfigMap(t *testing.T) {
 	res := evaluateScenario(t, "missing-configmap", "deployment", "messaging", "notifier")
 	require.Equal(t, diag.HealthDegraded, res.Health)

@@ -28,7 +28,7 @@ func TestJSONIncludesImpactSubjectAndPartialEvidence(t *testing.T) {
 		Health: diag.HealthOK, Findings: []*diag.Finding{finding}, Standalone: []*diag.Finding{finding}, Partial: true,
 		ReplicaOwners: map[string]graph.ResourceRef{"f-1": {Kind: "Deployment", Namespace: "ns", Name: "api"}},
 		Warnings:      []graph.CollectionIssue{{Source: graph.SourceEvents, Resource: ref, Message: "forbidden"}},
-		Rules:         diag.RuleEvaluationSummary{Evaluated: 15},
+		Rules:         diag.RuleEvaluationSummary{Evaluated: 16},
 	}
 	var out bytes.Buffer
 	require.NoError(t, RenderJSON(&out, res))
@@ -37,7 +37,7 @@ func TestJSONIncludesImpactSubjectAndPartialEvidence(t *testing.T) {
 	require.Equal(t, true, decoded["partial"])
 	require.Len(t, decoded["warnings"], 1)
 	require.Equal(t, "v1.36.2", decoded["cluster"].(map[string]any)["kubernetesVersion"])
-	require.Equal(t, float64(15), decoded["rules"].(map[string]any)["evaluated"])
+	require.Equal(t, float64(16), decoded["rules"].(map[string]any)["evaluated"])
 	findings := decoded["findings"].([]any)
 	got := findings[0].(map[string]any)
 	require.Equal(t, "historical", got["impact"])

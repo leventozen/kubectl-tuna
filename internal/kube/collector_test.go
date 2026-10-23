@@ -517,6 +517,102 @@ func TestOptionalSecretReferenceNeedsNoLookupOrWarning(t *testing.T) {
 	require.False(t, exists)
 }
 
+func TestPodCollectorGetsEachReferencedPersistentVolumeClaimOnce(t *testing.T) {
+	pod := readyPod("api-1")
+	pod.Spec.Volumes = []corev1.Volume{
+		{
+			Name: "data-a",
+			VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+				ClaimName: "shared-data",
+			}},
+		},
+		{
+			Name: "data-b",
+			VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+				ClaimName: "shared-data",
+			}},
+		},
+	}
+	claim := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "shared-data", Namespace: "ns"},
+		Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
+	}
+	client := fakeClient(pod, claim)
+
+	g, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", "api-1")
+	require.NoError(t, err)
+	claimRef := graph.ResourceRef{Kind: "PersistentVolumeClaim", Namespace: "ns", Name: "shared-data"}
+	podRef := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "api-1"}
+	node, ok := g.Node(claimRef)
+	require.True(t, ok)
+	require.IsType(t, &corev1.PersistentVolumeClaim{}, node.Object)
+	require.True(t, g.HasEdge(podRef, claimRef, graph.EdgeClaimsStorage))
+	require.Equal(t, 1, actionCount(client.Actions(), "get", "persistentvolumeclaims"))
+}
+
+func TestPersistentVolumeClaimLookupFailureRemainsUnknown(t *testing.T) {
+	pod := readyPod("api-1")
+	pod.Status.Phase = corev1.PodPending
+	pod.Status.Conditions[0].Status = corev1.ConditionFalse
+	pod.Spec.Volumes = []corev1.Volume{{
+		Name: "data",
+		VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+			ClaimName: "data",
+		}},
+	}}
+	client := fakeClient(pod)
+	client.PrependReactor("get", "persistentvolumeclaims", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("forbidden")
+	})
+
+	g, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", "api-1")
+	require.NoError(t, err)
+	claimRef := graph.ResourceRef{Kind: "PersistentVolumeClaim", Namespace: "ns", Name: "data"}
+	node, ok := g.Node(claimRef)
+	require.True(t, ok)
+	require.True(t, node.ExistenceUnknown())
+
+	res := diag.NewEngine().Evaluate(g)
+	require.True(t, res.Partial)
+	require.True(t, hasWarningSource(res, graph.SourcePersistentVolumeClaim))
+	require.False(t, hasFindingType(res, diag.PersistentVolumeClaimMissing))
+	require.False(t, hasFindingType(res, diag.PersistentVolumeClaimPending))
+}
+
+func TestMissingPersistentVolumeClaimBecomesExactSchedulingRoot(t *testing.T) {
+	pod := readyPod("api-1")
+	pod.Status.Phase = corev1.PodPending
+	pod.Status.Conditions = []corev1.PodCondition{
+		{
+			Type: corev1.PodScheduled, Status: corev1.ConditionFalse,
+			Reason:  corev1.PodReasonUnschedulable,
+			Message: `persistentvolumeclaim "data" not found`,
+		},
+		{Type: corev1.PodReady, Status: corev1.ConditionFalse},
+	}
+	pod.Spec.Volumes = []corev1.Volume{{
+		Name: "data",
+		VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+			ClaimName: "data",
+		}},
+	}}
+	client := fakeClient(pod)
+
+	g, err := kube.NewCollector(client).CollectPod(context.Background(), "ns", "api-1")
+	require.NoError(t, err)
+	claimRef := graph.ResourceRef{Kind: "PersistentVolumeClaim", Namespace: "ns", Name: "data"}
+	node, ok := g.Node(claimRef)
+	require.True(t, ok)
+	require.True(t, node.Missing())
+
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthDegraded, res.Health)
+	require.False(t, res.Partial)
+	require.Len(t, res.RootCauses, 1)
+	require.Equal(t, diag.PersistentVolumeClaimMissing, res.RootCauses[0].Type)
+	require.Equal(t, claimRef, res.RootCauses[0].Resource)
+}
+
 func TestMissingProjectedConfigMapKeepsContainerSubject(t *testing.T) {
 	pod := readyPod("api-1")
 	pod.Status.Conditions[0].Status = corev1.ConditionFalse
