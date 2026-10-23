@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backup-latest-k8r2m
+  namespace: batch
+  uid: pod-backup-latest-uid
+  labels:
+    batch.kubernetes.io/controller-uid: job-backup-latest-uid
+    batch.kubernetes.io/job-name: backup-latest
+  ownerReferences:
+    - apiVersion: batch/v1
+      kind: Job
+      name: backup-latest
+      uid: job-backup-latest-uid
+      controller: true
+spec:
+  restartPolicy: Never
+  containers:
+    - name: backup
+      image: busybox:1.36
+      resources:
+        limits:
+          memory: 16Mi
+status:
+  phase: Failed
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: ContainersNotReady
+  containerStatuses:
+    - name: backup
+      image: busybox:1.36
+      ready: false
+      restartCount: 0
+      state:
+        terminated:
+          exitCode: 137
+          reason: OOMKilled

@@ -132,6 +132,25 @@ func TestJobCorrelationDoesNotTreatOrdinaryNotReadyPodAsFailureCause(t *testing.
 	require.Empty(t, failed.CausedBy)
 }
 
+func TestCronJobCorrelationRequiresLatestRunEdge(t *testing.T) {
+	cronJobRef := graph.ResourceRef{Kind: "CronJob", Namespace: "ns", Name: "backup"}
+	oldJobRef := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup-old"}
+	latestJobRef := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup-latest"}
+	g := graph.New(cronJobRef)
+	g.AddEdge(cronJobRef, oldJobRef, graph.EdgeOwns)
+	g.AddEdge(cronJobRef, latestJobRef, graph.EdgeOwns)
+	g.AddEdge(cronJobRef, latestJobRef, graph.EdgeLatestRun)
+
+	oldFailure := &Finding{Type: JobFailed, Resource: oldJobRef}
+	latestFailure := &Finding{Type: JobFailed, Resource: latestJobRef}
+	cronJobFailure := &Finding{Type: CronJobLatestRunFailed, Resource: cronJobRef}
+	Correlate([]*Finding{oldFailure, latestFailure, cronJobFailure}, g)
+
+	require.Empty(t, oldFailure.Causes, "ordinary ownership must not promote a retained historical failure")
+	require.Equal(t, []*Finding{cronJobFailure}, latestFailure.Causes)
+	require.Equal(t, []*Finding{latestFailure}, cronJobFailure.CausedBy)
+}
+
 func TestCorrelationRequiresSameContainer(t *testing.T) {
 	pod := graph.ResourceRef{Kind: "Pod", Namespace: "ns", Name: "multi"}
 	g := graph.New(pod)

@@ -62,6 +62,7 @@ const (
 	DeploymentUnavailable  FindingType = "deployment-unavailable"
 	StatefulSetUnavailable FindingType = "statefulset-unavailable"
 	JobFailed              FindingType = "job-failed"
+	CronJobLatestRunFailed FindingType = "cronjob-latest-run-failed"
 	RolloutStuck           FindingType = "rollout-stuck"
 
 	// Scheduling and resources

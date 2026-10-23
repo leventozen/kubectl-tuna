@@ -2,7 +2,9 @@
 # Deploy a broken or constrained scenario to the current cluster and diagnose it with Tuna.
 #
 # Usage: examples/run-demo.sh <scenario> [--keep]
-#   scenarios: broken-readiness-port | service-selector-mismatch | oomkilled | failed-scheduling | pending-pvc | hpa-metrics-unavailable
+#   scenarios: broken-readiness-port | service-selector-mismatch | oomkilled |
+#              failed-scheduling | pending-pvc | hpa-metrics-unavailable |
+#              statefulset-unavailable | job-failed
 set -euo pipefail
 
 SCENARIO="${1:?usage: run-demo.sh <scenario> [--keep]}"
@@ -35,6 +37,16 @@ hpa-metrics-unavailable)
 	KIND="deployment"
 	NAME="queue-worker"
 	WAIT=30
+	;;
+statefulset-unavailable)
+	KIND="statefulset"
+	NAME="database"
+	WAIT=30
+	;;
+job-failed)
+	KIND="job"
+	NAME="backup"
+	WAIT=90
 	;;
 *)
 	echo "unknown scenario: $SCENARIO" >&2

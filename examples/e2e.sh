@@ -37,6 +37,7 @@ ALL_E2E_CASES=(
 	pending-pvc
 	statefulset-unavailable
 	job-failed
+	cronjob-latest-run
 	oomkilled
 )
 
@@ -477,6 +478,45 @@ raise SystemExit(0 if ok else 1)
 '
 }
 
+matches_cronjob_latest_run_failed_contract() {
+	python3 -c '
+import json, sys
+res = json.load(sys.stdin)
+findings = res.get("findings", [])
+
+def one(finding_type):
+    matches = [finding for finding in findings if finding.get("type") == finding_type]
+    return matches[0] if len(matches) == 1 else None
+
+oom = one("container-oomkilled")
+not_ready = one("pod-not-ready")
+job_failed = one("job-failed")
+cron_failed = one("cronjob-latest-run-failed")
+actual_types = sorted(finding.get("type") for finding in findings)
+expected_types = sorted([
+    "container-oomkilled", "pod-not-ready", "job-failed", "cronjob-latest-run-failed",
+])
+
+ok = all([oom, not_ready, job_failed, cron_failed]) and (
+    res.get("health") == "degraded"
+    and res.get("partial") is False
+    and res.get("warnings", []) == []
+    and actual_types == expected_types
+    and res.get("rootCauses") == [oom.get("id")]
+    and oom.get("causes") == [not_ready.get("id")]
+    and not_ready.get("causedBy") == [oom.get("id")]
+    and not_ready.get("causes") == [job_failed.get("id")]
+    and job_failed.get("resource", {}).get("name") == "backup-newest-failed"
+    and job_failed.get("causedBy") == [not_ready.get("id")]
+    and job_failed.get("causes") == [cron_failed.get("id")]
+    and cron_failed.get("resource", {}).get("kind") == "CronJob"
+    and cron_failed.get("resource", {}).get("name") == "backup"
+    and cron_failed.get("causedBy") == [job_failed.get("id")]
+)
+raise SystemExit(0 if ok else 1)
+'
+}
+
 matches_stale_event_identity_contract() {
 	python3 -c '
 import json, sys
@@ -785,6 +825,117 @@ check_job_failed() {
 		echo "FAIL: Job failure contract was not met within ${deadline_s}s (exit: $status)"
 		[ -n "$out" ] && echo "$out"
 		kubectl get job backup -n tuna-demo -o yaml 2>/dev/null || true
+		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
+		fail=1
+	fi
+	kubectl delete namespace tuna-demo --wait >/dev/null
+}
+
+create_owned_cronjob_job() {
+	local name="$1" scheduled_at="$2" mode="$3" cronjob_uid="$4"
+	python3 -c '
+import json, sys
+
+name, scheduled_at, mode, cronjob_uid = sys.argv[1:5]
+container = {
+    "name": "backup",
+    "image": "busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+}
+if mode == "success":
+    container["command"] = ["/bin/true"]
+elif mode == "oom":
+    container["command"] = ["/bin/sh", "-ec", "x=x; while true; do x=$x$x$x$x; done"]
+    container["resources"] = {"requests": {"memory": "8Mi"}, "limits": {"memory": "16Mi"}}
+else:
+    raise SystemExit(f"unknown mode: {mode}")
+
+job = {
+    "apiVersion": "batch/v1",
+    "kind": "Job",
+    "metadata": {
+        "name": name,
+        "namespace": "tuna-demo",
+        "annotations": {"batch.kubernetes.io/cronjob-scheduled-timestamp": scheduled_at},
+        "ownerReferences": [{
+            "apiVersion": "batch/v1", "kind": "CronJob", "name": "backup",
+            "uid": cronjob_uid, "controller": True,
+        }],
+    },
+    "spec": {
+        "backoffLimit": 0,
+        "template": {
+            "spec": {
+                "restartPolicy": "Never",
+                "terminationGracePeriodSeconds": 1,
+                "containers": [container],
+            },
+        },
+    },
+}
+json.dump(job, sys.stdout)
+' "$name" "$scheduled_at" "$mode" "$cronjob_uid" | kubectl apply -f - >/dev/null
+}
+
+check_cronjob_latest_run() {
+	local scenario="cronjob-latest-run" deadline_s=240
+	echo "=== scenario: $scenario (historical isolation and latest scheduled run) ==="
+	kubectl apply -f "$DIR/$scenario/manifests.yaml" >/dev/null
+
+	local cronjob_uid
+	cronjob_uid="$(kubectl get cronjob backup -n tuna-demo -o jsonpath='{.metadata.uid}')"
+	create_owned_cronjob_job backup-old-failed 2026-01-01T09:00:00Z oom "$cronjob_uid"
+	create_owned_cronjob_job backup-latest-success 2026-01-01T10:00:00Z success "$cronjob_uid"
+
+	local start=$SECONDS out="" status=1 healthy="FAIL"
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		if ! kubectl wait --for=condition=failed job/backup-old-failed -n tuna-demo --timeout=1s >/dev/null 2>&1; then
+			continue
+		fi
+		if ! kubectl wait --for=condition=complete job/backup-latest-success -n tuna-demo --timeout=1s >/dev/null 2>&1; then
+			continue
+		fi
+		set +e
+		out="$("$TUNA_BIN" inspect cronjob backup -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 0 ] && echo "$out" | strictly_healthy; then
+			healthy="PASS"
+			break
+		fi
+	done
+	write_case_result "$scenario-healthy-latest" "$out"
+	if [ "$healthy" != "PASS" ]; then
+		echo "FAIL: retained old failure contaminated the newer successful CronJob run (exit: $status)"
+		[ -n "$out" ] && echo "$out"
+		kubectl get jobs -n tuna-demo -o wide 2>/dev/null || true
+		fail=1
+		kubectl delete namespace tuna-demo --wait >/dev/null
+		return
+	fi
+
+	create_owned_cronjob_job backup-newest-failed 2026-01-01T11:00:00Z oom "$cronjob_uid"
+	local failed="FAIL"
+	start=$SECONDS
+	while [ $((SECONDS - start)) -lt "$deadline_s" ]; do
+		sleep 5
+		set +e
+		out="$("$TUNA_BIN" inspect cronjob backup -n tuna-demo -o json 2>/dev/null)"
+		status=$?
+		set -e
+		if [ "$status" -eq 2 ] && echo "$out" | matches_cronjob_latest_run_failed_contract; then
+			failed="PASS"
+			break
+		fi
+	done
+	write_case_result "$scenario-failed-latest" "$out"
+	if [ "$failed" = "PASS" ]; then
+		echo "PASS: old failure was ignored, then the newest failed run produced the exact CronJob chain ($((SECONDS - start))s)"
+	else
+		echo "FAIL: newest CronJob failure contract was not met within ${deadline_s}s (exit: $status)"
+		[ -n "$out" ] && echo "$out"
+		kubectl get cronjob backup -n tuna-demo -o yaml 2>/dev/null || true
+		kubectl get jobs -n tuna-demo -o wide 2>/dev/null || true
 		kubectl get pods -n tuna-demo -o wide 2>/dev/null || true
 		fail=1
 	fi
@@ -1357,6 +1508,9 @@ run_selected_case() {
 		;;
 	job-failed)
 		check_job_failed
+		;;
+	cronjob-latest-run)
+		check_cronjob_latest_run
 		;;
 	oomkilled)
 		check oomkilled deployment billing 240 container-oomkilled

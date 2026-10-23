@@ -37,6 +37,7 @@ var causalRules = []causalRule{
 	{PodNotReady, DeploymentUnavailable, ownedByDeployment},
 	{PodNotReady, StatefulSetUnavailable, ownedByStatefulSet},
 	{PodNotReady, JobFailed, failedPodExhaustedJobRetryBudget},
+	{JobFailed, CronJobLatestRunFailed, failedJobIsLatestCronJobRun},
 	{PodNotReady, RolloutStuck, ownedByDeploymentRolloutTarget},
 	{ServiceSelectorNoPods, ServiceNoReadyEndpoints, sameResource},
 	{NodePressure, PodEvicted, scheduledOnNode},
@@ -151,6 +152,10 @@ func failedPodExhaustedJobRetryBudget(cause, effect *Finding, g *graph.Graph) bo
 	}
 	pod, ok := podNode.Object.(*corev1.Pod)
 	return ok && pod.Status.Phase == corev1.PodFailed
+}
+
+func failedJobIsLatestCronJobRun(cause, effect *Finding, g *graph.Graph) bool {
+	return g.HasEdge(effect.Resource, cause.Resource, graph.EdgeLatestRun)
 }
 
 // ownedByDeploymentRolloutTarget links Pod NotReady to rollout-stuck only when

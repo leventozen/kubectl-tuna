@@ -101,6 +101,9 @@ kubectl tuna inspect statefulset NAME -n NAMESPACE
 # Run-to-completion lifecycle: Job → Pods
 kubectl tuna inspect job NAME -n NAMESPACE
 
+# Scheduled workload: CronJob → uniquely latest scheduled Job → Pods
+kubectl tuna inspect cronjob NAME -n NAMESPACE
+
 # Pod, owner chain, scheduled Node, and selecting Services
 kubectl tuna inspect pod NAME -n NAMESPACE
 
@@ -117,10 +120,10 @@ kubectl tuna inspect service NAME -n NAMESPACE -o json
 ## How it works
 
 Tuna uses the current kubeconfig to collect a focused graph around one Service,
-Deployment, StatefulSet, Job, or Pod. It verifies that the focus did not change
-during collection, evaluates deterministic rules against structured Kubernetes
-state, and connects findings only when an explicit typed relationship supports
-the causal step.
+Deployment, StatefulSet, Job, CronJob, or Pod. It verifies that the focus did
+not change during collection, evaluates deterministic rules against structured
+Kubernetes state, and connects findings only when an explicit typed
+relationship supports the causal step.
 
 ```mermaid
 flowchart LR
@@ -145,7 +148,7 @@ rule, correlation, health, and rendering walkthrough.
 | Family | Findings |
 |---|---|
 | Traffic path | `service-selector-no-pods`, `service-target-port-mismatch`, `service-no-ready-endpoints`, `service-terminating-endpoints-only`, `readiness-probe-port-mismatch`, `readiness-probe-failing`, `pod-not-ready` |
-| Workload lifecycle | `crashloop-backoff`, `image-pull-failure`, `missing-config-reference`, `container-oomkilled`, `container-sigkill`, `deployment-unavailable`, `statefulset-unavailable`, `job-failed` |
+| Workload lifecycle | `crashloop-backoff`, `image-pull-failure`, `missing-config-reference`, `container-oomkilled`, `container-sigkill`, `deployment-unavailable`, `statefulset-unavailable`, `job-failed`, `cronjob-latest-run-failed` |
 | Scheduling | `pod-unschedulable` (resource shortage, untolerated taint, affinity/selector mismatch) |
 | Storage | `persistent-volume-claim-missing`, `persistent-volume-claim-pending` (Pending is a risk unless exact scheduler evidence proves it is blocking) |
 | Autoscaling | `hpa-metrics-unavailable`, `hpa-scale-up-limited` (standalone capacity risks; neither is treated as proof of workload outage) |
@@ -194,6 +197,9 @@ make demo SCENARIO=pending-pvc
 make demo SCENARIO=hpa-metrics-unavailable
 make demo SCENARIO=statefulset-unavailable
 make demo SCENARIO=job-failed
+
+# Two-phase historical-failure isolation plus newest-run failure
+make e2e E2E_CASE=cronjob-latest-run
 ```
 
 The broken scenarios run against Kind in `examples/e2e.sh`, together with
@@ -209,7 +215,12 @@ healthy. A StatefulSet case verifies direct StatefulSet→Pod ownership and an
 image-pull→Pod NotReady→StatefulSet unavailable chain without inventing a
 Deployment-style progress deadline. A Job case verifies an exact
 OOMKilled→Pod NotReady→Job failed chain using controller-authored terminal
-state. The RBAC case must return `unknown`
+state. A CronJob case creates exact UID-owned Jobs with explicit scheduled
+timestamps, first proving that a retained failed Job cannot contaminate a newer
+successful run, then verifying the Pod→Job→CronJob chain after a newer failed
+run. The deterministic scenario does not wait for wall-clock CronJob scheduling;
+production ordering uses the timestamp authored by the CronJob controller. The
+RBAC case must return `unknown`
 with explicit partial evidence and no false zero-endpoint finding. The
 shared-Service case proves that a broken Pod explains only its owning Deployment
 even when another selected workload has its own unavailable finding. A
@@ -232,6 +243,8 @@ make e2e E2E_CASE=healthy-service
 
 `make e2e-full` is reserved for an explicit integration milestone. CI runs the
 complete scenario set across the configured Kubernetes-version matrix.
+The scenario set through StatefulSet and Job has been observed green across
+that matrix; the new CronJob scenario still needs its first remote observation.
 
 Additional fixture and adversarial tests cover healthy state, missing ConfigMaps,
 ambiguous SIGKILL signals, eviction, EndpointSlice semantics, API failures, and
@@ -249,7 +262,7 @@ every related Node's kubelet version. Mixed kubelet minors inside the reviewed
 window are allowed; unavailable, newer-than-server, or unreviewed kubelets skip
 only those rules and make the result explicitly `unknown`.
 
-`make corpus` runs the machine-readable seed-corpus contract. Its current twelve
+`make corpus` runs the machine-readable seed-corpus contract. Its current thirteen
 snapshots are author-constructed fake-client fixtures, not real-cluster
 evidence; one is a healthy control. Evidence classes, case-acceptance rules,
 and the intentionally still-open 25-case/10-control target are documented in
@@ -263,10 +276,15 @@ field-validation cases.
 
 ## Current limitations
 
-- Service, Deployment, StatefulSet, Job, and Pod are the valid inspection entry points.
+- Service, Deployment, StatefulSet, Job, CronJob, and Pod are the valid inspection entry points.
 - StatefulSet availability and direct Pod ownership are covered. Tuna does not
   claim a StatefulSet rollout is stuck from revision differences or replica
   counts alone because the API has no Deployment-style progress deadline.
+- CronJob diagnosis evaluates only one uniquely latest owned Job, ordered by
+  `batch.kubernetes.io/cronjob-scheduled-timestamp`. Missing, malformed, or
+  tied latest timestamps and removed scheduled history produce `unknown`
+  rather than guessing. Tuna does not infer missed schedules or parse cron
+  expressions against wall-clock time.
 - Built-in rules currently have a reviewed Kubernetes 1.34–1.37 window. This
   is not a support guarantee until the multi-version real-cluster gate passes;
   other minors cause version-scoped rules to be skipped.

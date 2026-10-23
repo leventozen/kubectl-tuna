@@ -30,6 +30,8 @@ type Collector struct {
 	client kubernetes.Interface
 }
 
+const cronJobScheduledTimestampAnnotation = "batch.kubernetes.io/cronjob-scheduled-timestamp"
+
 func NewCollector(client kubernetes.Interface) *Collector {
 	return &Collector{client: client}
 }
@@ -239,7 +241,104 @@ func (c *Collector) CollectJob(ctx context.Context, namespace, name string) (*gr
 	c.addJob(ctx, g, job)
 	c.collectClusterInfo(ctx, g)
 
-	podList, err := c.client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+	c.collectJobPods(ctx, g, job)
+
+	c.collectEvents(ctx, g, namespace)
+	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
+		return c.client.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
+	})
+	return g, nil
+}
+
+// CollectCronJob builds a graph around a CronJob and only its uniquely latest
+// scheduled Job. Historical Jobs are deliberately excluded so a retained old
+// failure cannot make a newer healthy or active run look broken. Kubernetes
+// has added the scheduled-timestamp annotation to CronJob-created Jobs since
+// v1.32; missing, invalid, or ambiguous timestamps fail closed.
+func (c *Collector) CollectCronJob(ctx context.Context, namespace, name string) (*graph.Graph, error) {
+	startedAt := time.Now()
+	cronJob, err := c.client.BatchV1().CronJobs(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get cronjob %s/%s: %w", namespace, name, err)
+	}
+	cronJobRef := graph.ResourceRef{Kind: "CronJob", Namespace: namespace, Name: name}
+	g := graph.New(cronJobRef)
+	g.BeginCollection(startedAt, cronJob)
+	g.AddNode(cronJobRef, cronJob)
+	c.collectClusterInfo(ctx, g)
+
+	jobList, err := c.client.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourceJob, Resource: cronJobRef,
+			Message: fmt.Sprintf("could not list CronJob Jobs: %v", err), AffectsHealth: true,
+		})
+	} else if latest := latestOwnedCronJobJob(g, cronJob, jobList.Items); latest != nil {
+		jobRef := c.addJob(ctx, g, latest)
+		g.AddEdge(cronJobRef, jobRef, graph.EdgeLatestRun)
+		c.collectJobPods(ctx, g, latest)
+	}
+
+	c.collectEvents(ctx, g, namespace)
+	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
+		return c.client.BatchV1().CronJobs(namespace).Get(ctx, name, metav1.GetOptions{})
+	})
+	return g, nil
+}
+
+func latestOwnedCronJobJob(g *graph.Graph, cronJob *batchv1.CronJob, jobs []batchv1.Job) *batchv1.Job {
+	cronJobRef := graph.ResourceRef{Kind: "CronJob", Namespace: cronJob.Namespace, Name: cronJob.Name}
+	var latest *batchv1.Job
+	var latestScheduledAt time.Time
+	ambiguous := false
+	ownedCount := 0
+	for i := range jobs {
+		job := &jobs[i]
+		if !isControllerOwner(job.OwnerReferences, batchv1.SchemeGroupVersion.String(), "CronJob", cronJob.UID) {
+			continue
+		}
+		ownedCount++
+		raw := job.Annotations[cronJobScheduledTimestampAnnotation]
+		scheduledAt, err := time.Parse(time.RFC3339, raw)
+		if raw == "" || err != nil {
+			g.AddCollectionIssue(graph.CollectionIssue{
+				Source: graph.SourceJob, Resource: cronJobRef,
+				Message:       fmt.Sprintf("could not order owned Job %q: annotation %s is missing or invalid", job.Name, cronJobScheduledTimestampAnnotation),
+				AffectsHealth: true,
+			})
+			return nil
+		}
+		switch {
+		case latest == nil || scheduledAt.After(latestScheduledAt):
+			latest = job
+			latestScheduledAt = scheduledAt
+			ambiguous = false
+		case scheduledAt.Equal(latestScheduledAt):
+			ambiguous = true
+		}
+	}
+	if ownedCount == 0 && cronJob.Status.LastScheduleTime != nil {
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourceJob, Resource: cronJobRef,
+			Message:       "CronJob reports a previous schedule but no owned Job remains to establish the latest run outcome",
+			AffectsHealth: true,
+		})
+		return nil
+	}
+	if ambiguous {
+		g.AddCollectionIssue(graph.CollectionIssue{
+			Source: graph.SourceJob, Resource: cronJobRef,
+			Message:       fmt.Sprintf("multiple owned Jobs share the latest %s value %q", cronJobScheduledTimestampAnnotation, latestScheduledAt.Format(time.RFC3339)),
+			AffectsHealth: true,
+		})
+		return nil
+	}
+	return latest
+}
+
+func (c *Collector) collectJobPods(ctx context.Context, g *graph.Graph, job *batchv1.Job) {
+	jobRef := graph.ResourceRef{Kind: "Job", Namespace: job.Namespace, Name: job.Name}
+	podList, err := c.client.CoreV1().Pods(job.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labels.Set{batchv1.ControllerUidLabel: string(job.UID)}.AsSelector().String(),
 	})
 	if err != nil {
@@ -247,22 +346,16 @@ func (c *Collector) CollectJob(ctx context.Context, namespace, name string) (*gr
 			Source: graph.SourcePod, Resource: jobRef,
 			Message: fmt.Sprintf("could not list Job Pods: %v", err),
 		})
-	} else {
-		for i := range podList.Items {
-			pod := &podList.Items[i]
-			if !isControllerOwner(pod.OwnerReferences, batchv1.SchemeGroupVersion.String(), "Job", job.UID) {
-				continue
-			}
-			podRef := c.addPod(ctx, g, pod)
-			g.AddEdge(jobRef, podRef, graph.EdgeOwns)
-		}
+		return
 	}
-
-	c.collectEvents(ctx, g, namespace)
-	c.finishFocusCollection(ctx, g, func(ctx context.Context) (metav1.Object, error) {
-		return c.client.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
-	})
-	return g, nil
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+		if !isControllerOwner(pod.OwnerReferences, batchv1.SchemeGroupVersion.String(), "Job", job.UID) {
+			continue
+		}
+		podRef := c.addPod(ctx, g, pod)
+		g.AddEdge(jobRef, podRef, graph.EdgeOwns)
+	}
 }
 
 // collectServicesSelectingPods performs the unavoidable namespace-wide reverse

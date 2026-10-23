@@ -15,7 +15,7 @@ is checked against each rule's reviewed compatibility range. If version
 discovery fails, version-scoped rules are skipped and health is `unknown`
 unless other collected evidence already proves a current focus problem.
 
-The focus Service, Deployment, StatefulSet, Job, or Pod is fetched at both the
+The focus Service, Deployment, StatefulSet, Job, CronJob, or Pod is fetched at both the
 beginning and end of collection using the same `get` permission. The second
 read verifies its UID, `resourceVersion`, and `generation`. If the read fails
 or the revision changed, rule evaluation is suspended because the related
@@ -37,8 +37,8 @@ is documented in [`temporal-integrity.md`](temporal-integrity.md).
 | apps | `deployments` | `get` | fetch a Deployment focus or resolve a Pod owner |
 | apps | `replicasets` | `get`, `list` | resolve Deployment→ReplicaSet→Pod ownership |
 | apps | `statefulsets` | `get` | fetch a StatefulSet focus or resolve direct StatefulSet→Pod ownership |
-| batch | `jobs` | `get` | fetch a Job focus or resolve direct Job→Pod ownership |
-| batch | `cronjobs` | `get` | resolve an exact CronJob→Job owner relationship |
+| batch | `jobs` | `get`, `list` | fetch a Job focus or resolve direct Job→Pod ownership; list exact-owned Jobs for a CronJob focus |
+| batch | `cronjobs` | `get` | fetch a CronJob focus or resolve an exact CronJob→Job owner relationship |
 | autoscaling | `horizontalpodautoscalers` | `list` | discover HPAs whose exact scale target is a collected Deployment |
 | discovery.k8s.io | `endpointslices` | `list` | inspect endpoint readiness for a Service |
 | core, cluster-scoped | `nodes` | `get` | inspect pressure conditions and establish the kubelet version for the exact Node hosting a collected Pod |
@@ -52,25 +52,25 @@ in its findings.
 
 ### Operations by entry point
 
-The aggregated Role below is convenient when all five inspect commands are
+The aggregated Role below is convenient when all six inspect commands are
 allowed. A narrower grant can follow this table (`—` means no current call):
 
-| Resource / endpoint | Service focus | Deployment focus | StatefulSet focus | Job focus | Pod focus |
-|---|---|---|---|---|---|
-| non-resource `/version` | `get` | `get` | `get` | `get` | `get` |
-| `services` | `get` | `list` | `list` | — | `list` |
-| `pods` | `list` | `list` | `list` | `list` | `get` |
-| `configmaps` | `get` | `get` | `get` | `get` | `get` |
-| `persistentvolumeclaims` | `get` | `get` | `get` | `get` | `get` |
-| `events` | `list` | `list` | `list` | `list` | `list` |
-| `deployments` | conditional `get` | `get` | — | — | conditional `get` |
-| `replicasets` | conditional `get` | `list` | — | — | conditional `get` |
-| `statefulsets` | conditional `get` | — | `get` | — | conditional `get` |
-| `jobs.batch` | conditional `get` | — | — | `get` | conditional `get` |
-| `cronjobs.batch` | conditional `get` | — | — | conditional `get` | conditional `get` |
-| `horizontalpodautoscalers.autoscaling` | conditional `list` | `list` | — | — | conditional `list` |
-| `endpointslices.discovery.k8s.io` | `list` | `list` | `list` | — | `list` |
-| cluster-scoped `nodes` | optional `get` | optional `get` | optional `get` | optional `get` | optional `get` |
+| Resource / endpoint | Service focus | Deployment focus | StatefulSet focus | Job focus | CronJob focus | Pod focus |
+|---|---|---|---|---|---|---|
+| non-resource `/version` | `get` | `get` | `get` | `get` | `get` | `get` |
+| `services` | `get` | `list` | `list` | — | — | `list` |
+| `pods` | `list` | `list` | `list` | `list` | `list` | `get` |
+| `configmaps` | `get` | `get` | `get` | `get` | `get` | `get` |
+| `persistentvolumeclaims` | `get` | `get` | `get` | `get` | `get` | `get` |
+| `events` | `list` | `list` | `list` | `list` | `list` | `list` |
+| `deployments` | conditional `get` | `get` | — | — | — | conditional `get` |
+| `replicasets` | conditional `get` | `list` | — | — | — | conditional `get` |
+| `statefulsets` | conditional `get` | — | `get` | — | — | conditional `get` |
+| `jobs.batch` | conditional `get` | — | — | `get` | `list` | conditional `get` |
+| `cronjobs.batch` | conditional `get` | — | — | conditional `get` | `get` | conditional `get` |
+| `horizontalpodautoscalers.autoscaling` | conditional `list` | `list` | — | — | — | conditional `list` |
+| `endpointslices.discovery.k8s.io` | `list` | `list` | `list` | — | — | `list` |
+| cluster-scoped `nodes` | optional `get` | optional `get` | optional `get` | optional `get` | optional `get` | optional `get` |
 
 Service discovery for Deployment, StatefulSet, and Pod focus remains a
 namespace list because Kubernetes has no reverse query over
@@ -125,7 +125,10 @@ rules:
     resources: ["replicasets"]
     verbs: ["get", "list"]
   - apiGroups: ["batch"]
-    resources: ["jobs", "cronjobs"]
+    resources: ["jobs"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
     verbs: ["get"]
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
@@ -187,13 +190,16 @@ Tuna reports the missing permission rather than running version-scoped rules.
 
 ## Known broad reads
 
-The retained graph is focused, but two reverse-discovery operations are broader
+The retained graph is focused, but three reverse-discovery operations are broader
 than ideal:
 
 - Services are listed across the namespace to discover which ones select a
   Pod, Deployment-owned Pod, or StatefulSet-owned Pod.
 - HorizontalPodAutoscalers are listed across the namespace when the retained
   graph contains a Deployment, then filtered by exact `scaleTargetRef`.
+- Jobs are listed across the namespace for a CronJob focus, then filtered by
+  exact `batch/v1 CronJob` controller ownerReference and owner UID. Kubernetes
+  exposes no ownerReference field selector for this query.
 
 Deployment-owned ReplicaSets and Pods, StatefulSet-owned Pods, Job-owned Pods,
 and Service EndpointSlices already use label selectors. Pod Events use exact
@@ -221,6 +227,9 @@ and narrow it where the Kubernetes API supports a reliable query.
   the API server or outside the rule's reviewed range.
 - EndpointSlice failure for a Service focus makes health `unknown` because
   endpoint health cannot be established.
+- A CronJob Job-list failure, missing/malformed scheduled timestamp, ambiguous
+  latest timestamp, or removed scheduled history makes health `unknown` rather
+  than treating retained historical state as the latest run.
 - Failure to discover or enrich related Pods, ReplicaSets, StatefulSets, Jobs,
   CronJobs, Services, HorizontalPodAutoscalers, Nodes, ConfigMaps,
   PersistentVolumeClaims, or Events is emitted as partial evidence.

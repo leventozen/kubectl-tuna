@@ -118,6 +118,20 @@
       ]
     },
     {
+      "id": "fixture-cronjob-latest-run-failed",
+      "evidenceClass": "synthetic-fixture",
+      "fixture": "cronjob-latest-run-failed",
+      "kubernetesVersion": "v1.36.2",
+      "labels": ["cronjob", "latest-run", "historical-isolation", "causal-chain"],
+      "limitations": ["author-constructed", "fake-client", "controller-status-synthetic"],
+      "inspections": [
+        {
+          "focus": {"kind": "cronjob", "namespace": "batch", "name": "backup"},
+          "expected": {"health": "degraded", "partial": false, "rootCauseTypes": ["container-oomkilled"]}
+        }
+      ]
+    },
+    {
       "id": "fixture-missing-configmap",
       "evidenceClass": "synthetic-fixture",
       "fixture": "missing-configmap",

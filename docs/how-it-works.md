@@ -6,7 +6,7 @@ Kubernetes mechanism and the required resource relationship both exist.
 
 ```mermaid
 flowchart LR
-    CLI["inspect Service / Deployment / StatefulSet / Job / Pod"] --> C["focused collector"]
+    CLI["inspect Service / Deployment / StatefulSet / Job / CronJob / Pod"] --> C["focused collector"]
     C --> T["temporal-integrity check"]
     T --> G["directed resource graph"]
     T --> U["collection issues / unknown evidence"]
@@ -21,7 +21,7 @@ flowchart LR
 
 ### 1. Start from one focus resource
 
-The command always has a focus: the Service, Deployment, StatefulSet, Job, or Pod
+The command always has a focus: the Service, Deployment, StatefulSet, Job, CronJob, or Pod
 named by the user. Collection expands only far enough to evaluate relationships
 relevant to that focus.
 
@@ -31,6 +31,7 @@ relevant to that focus.
 | Deployment | owned ReplicaSets and Pods, Services selecting those Pods, their EndpointSlices, Nodes, configuration and PVC references, exact-target HPAs, related events |
 | StatefulSet | directly owned Pods, Services selecting those Pods, their EndpointSlices, Nodes, configuration and PVC references, related events |
 | Job | exact CronJob owner when present, directly owned Pods, Nodes, configuration and PVC references, related events |
+| CronJob | exact owned Jobs are ordered by their controller-authored scheduled timestamp; only the uniquely latest Job, its Pods, Nodes, configuration and PVC references, and related events are retained |
 | Pod | owner chain, scheduled Node, Services selecting the Pod, their EndpointSlices, configuration and PVC references, related Deployment HPAs, related events |
 
 “Focused” describes the retained graph, not a promise that every Kubernetes
@@ -80,8 +81,8 @@ coverage is visible, and an otherwise healthy result becomes `unknown`.
 
 The current built-in range is Kubernetes 1.34–1.37: the three regular release
 branches plus 1.34 while it remains in maintenance mode. This reviewed range
-is configured in the digest-pinned Kind CI matrix; its latest rolling advance
-must be observed green before it is mechanically validated. Even a green matrix
+is configured in the digest-pinned Kind CI matrix and has been observed green
+for the scenario set through StatefulSet and Job. Even a green matrix
 is not a support claim: the corpus, mixed-component, distribution, and
 external-operator gates remain open. A new Kubernetes minor does not become
 compatible merely because the API request still succeeds. The window is
@@ -111,6 +112,7 @@ Service    --routes-to----> EndpointSlice
 Deployment --owns---------> ReplicaSet --owns---------> Pod
 StatefulSet --owns--------> Pod
 CronJob     --owns--------> Job --owns--------> Pod
+CronJob     --latest-run--> Job
 Pod        --references---> ConfigMap / Secret reference
 Pod        --claims-storage-> PersistentVolumeClaim
 Pod        --scheduled-on-> Node
@@ -184,6 +186,9 @@ pod-not-ready
 pod-not-ready
   -- exact failed Job Pod exhausted an explicit zero retry budget --> job-failed
 
+job-failed
+  -- that Job is the CronJob's uniquely latest scheduled run --> cronjob-latest-run-failed
+
 pod-not-ready
   -- Deployment owns that Pod through the current-template ReplicaSet --> rollout-stuck
 
@@ -214,6 +219,17 @@ is linked only when the controller reports `BackoffLimitExceeded`, the Job has
 an explicit `backoffLimit: 0`, and the exact owned Pod reached `Failed` phase.
 Same labels, an ordinary NotReady Pod, or a recreated same-name Job are
 insufficient.
+
+`cronjob-latest-run-failed` adds a stricter boundary on top of ownership. Tuna
+lists Jobs in the namespace, keeps only exact controller ownerReferences whose
+CronJob UID matches the focus, and orders them using the controller-authored
+`batch.kubernetes.io/cronjob-scheduled-timestamp` annotation. That annotation
+has been present on CronJob-created Jobs since Kubernetes 1.32. An older
+retained failure is ignored when a newer run succeeded or remains active.
+Missing or malformed timestamps, a tie for latest, a failed Job LIST, or a
+CronJob reporting a previous schedule after all owned Jobs were removed makes
+health `unknown`; Tuna does not fall back to Job names, creation time, cron
+expression arithmetic, or `lastSuccessfulTime` inference.
 
 There is no generic “these objects are within four graph hops, therefore one
 caused the other” fallback. If the exact predicate cannot be proven, both

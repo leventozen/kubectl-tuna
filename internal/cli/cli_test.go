@@ -58,3 +58,10 @@ func TestRootCommandExposesJobInspection(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "job", command.Name())
 }
+
+func TestRootCommandExposesCronJobInspection(t *testing.T) {
+	root := NewRootCommand("dev")
+	command, _, err := root.Find([]string{"inspect", "cronjob"})
+	require.NoError(t, err)
+	require.Equal(t, "cronjob", command.Name())
+}

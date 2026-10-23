@@ -134,6 +134,15 @@ func TestBuiltInRuleContracts(t *testing.T) {
 			negative: func() *graph.Graph { return jobConditionContractGraph(batchv1.JobComplete) },
 		},
 		{
+			rule: cronJobLatestRunFailedRule{},
+			positives: []positiveCase{{CronJobLatestRunFailed, func() *graph.Graph {
+				return cronJobLatestRunContractGraph(batchv1.JobFailed, true)
+			}}},
+			negative: func() *graph.Graph {
+				return cronJobLatestRunContractGraph(batchv1.JobFailed, false)
+			},
+		},
+		{
 			rule: rolloutStuckRule{},
 			positives: []positiveCase{{RolloutStuck, func() *graph.Graph {
 				return rolloutContractGraph(corev1.ConditionFalse)
@@ -419,6 +428,28 @@ func jobConditionContractGraph(conditionType batchv1.JobConditionType) *graph.Gr
 			Reason: "contract", Message: "contract condition",
 		}}},
 	})
+	return g
+}
+
+func cronJobLatestRunContractGraph(conditionType batchv1.JobConditionType, latest bool) *graph.Graph {
+	cronJobRef := graph.ResourceRef{Kind: "CronJob", Namespace: "ns", Name: "backup"}
+	jobRef := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup-123"}
+	g := graph.New(cronJobRef)
+	g.AddNode(cronJobRef, &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Name: cronJobRef.Name, Namespace: cronJobRef.Namespace}})
+	g.AddNode(jobRef, &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: jobRef.Name, Namespace: jobRef.Namespace,
+			Annotations: map[string]string{cronJobScheduledTimestampAnnotation: "2026-10-23T11:00:00Z"},
+		},
+		Status: batchv1.JobStatus{Conditions: []batchv1.JobCondition{{
+			Type: conditionType, Status: corev1.ConditionTrue,
+			Reason: "contract", Message: "contract condition",
+		}}},
+	})
+	g.AddEdge(cronJobRef, jobRef, graph.EdgeOwns)
+	if latest {
+		g.AddEdge(cronJobRef, jobRef, graph.EdgeLatestRun)
+	}
 	return g
 }
 

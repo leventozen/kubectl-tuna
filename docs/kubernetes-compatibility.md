@@ -90,6 +90,13 @@ reports the failure decision while stating that the Job is not terminal until
 `Failed=True`. It does not infer failure from Pod counters, retry settings, or
 elapsed wall-clock time.
 
+CronJob latest-run diagnosis uses exact controller ownership plus
+`batch.kubernetes.io/cronjob-scheduled-timestamp`, which Kubernetes has added
+to CronJob-created Jobs since 1.32 and documents as RFC3339. The reviewed
+1.34–1.37 window therefore shares this mechanism. Tuna fails closed when that
+annotation cannot identify one unique latest owned Job and does not infer
+missed schedules from local time or cron-expression evaluation.
+
 StatefulSet diagnosis in this window is deliberately limited to stable status
 and ownership fields: `observedGeneration`, replica counts,
 `currentRevision`/`updateRevision`, and controller OwnerReferences. Tuna treats

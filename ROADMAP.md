@@ -40,20 +40,22 @@ symptom, and evidence Tuna could not collect.
 Tuna has a strong internal reliability baseline but almost no independent
 product validation:
 
-- 19 built-in rules own 23 finding types with direct positive and negative
+- 20 built-in rules own 24 finding types with direct positive and negative
   contracts.
-- Twelve author-constructed fixture snapshots provide thirteen inspections and one
+- Thirteen author-constructed fixture snapshots provide fourteen inspections and one
   healthy control.
-- Fourteen author-constructed Kind scenarios provide fifteen phases when run
+- Fifteen author-constructed Kind scenarios provide seventeen phases when run
   and target six distinct root-cause patterns (one also exercises
   cross-container isolation; one also exercises same-name Pod Event identity;
   one also exercises a multiple-ReplicaSet rollout boundary; one exercises
-  direct StatefulSet ownership; one exercises direct Job ownership), one
-  healthy control, one recovery phase, one incomplete-RBAC abstention, and one
-  cross-workload isolation boundary. The twelve-scenario
-  set through Pending-PVC and HPA metrics has been observed green across the
-  current remote matrix; the new StatefulSet and Job scenarios await their
-  first full remote matrix observation.
+  direct StatefulSet ownership; one exercises direct Job ownership; one
+  isolates historical CronJob failures from the uniquely latest run), one
+  strict healthy control, one recovery phase, one historical-failure isolation
+  phase, one incomplete-RBAC abstention, and one cross-workload isolation
+  boundary. The fourteen-scenario set through
+  StatefulSet and Job has been observed green across the current remote
+  matrix; the new CronJob latest-run scenario awaits its first full remote
+  matrix observation.
   Repeating them across four Kubernetes minors validates compatibility
   mechanics; it does not create 56 independent cases.
 - There are no sanitized field incidents and no completed external-operator
@@ -287,7 +289,7 @@ whether the model survives Kubernetes behavior it was not authored around.
   scenarios; corpus precision and environment diversity remain open.
 - [x] Add a machine-readable seed-corpus manifest and harness that asserts
   exact root-cause sets, health, and partial state across existing fixtures.
-  All twelve snapshots are explicitly labeled `synthetic-fixture`; they do not
+  All thirteen snapshots are explicitly labeled `synthetic-fixture`; they do not
   count as real-cluster validation or satisfy the corpus-size target.
 - [x] Persist the exact API server build, Node kubelet versions, container
   runtimes, operating-system details, and distribution label with every e2e
@@ -437,23 +439,28 @@ Likely next slices:
   the current remote Kubernetes matrix. Findings remain standalone risks
   because neither condition proves workload outage. A deterministic live
   upper-limit reproduction remains open.
-- [ ] StatefulSet ownership and availability, designed independently from
+- [x] StatefulSet ownership and availability, designed independently from
   Deployment assumptions. The focus collector, direct `owns` causal path,
   fail-closed controller freshness, `statefulset-unavailable` rule, negative
   contract, synthetic corpus case, RBAC documentation, and targeted Kind
   scenario are implemented. Tuna deliberately does not infer a stuck rollout
   from revisions or replica counts because StatefulSet has no Deployment-style
-  progress deadline. Keep this open until the new scenario is observed green
-  across the current remote Kubernetes matrix.
-- [ ] Job/CronJob failure lifecycle. Job focus, exact CronJob→Job→Pod ownership,
+  progress deadline. The scenario is observed green across the current remote
+  Kubernetes matrix.
+- [x] Job failure lifecycle. Job focus, exact CronJob→Job→Pod ownership,
   controller-authored `Failed`/`FailureTarget` diagnosis, a negative condition
   contract, a synthetic causal-chain case, RBAC documentation, and a targeted
-  Kind scenario are implemented. Pod→Job causality is intentionally limited to
-  a failed exact-owned Pod exhausting an explicit zero retry budget. Keep the
-  Job slice open until the scenario is observed green across the current remote
-  matrix. CronJob focus and latest-run semantics remain separate: retained
-  historical failures must not make a healthy later run look broken, and
-  schedule arithmetic must not be guessed from wall-clock time alone.
+  Kind scenario are implemented and observed green across the current remote
+  matrix. Pod→Job causality is intentionally limited to a failed exact-owned
+  Pod exhausting an explicit zero retry budget.
+- [ ] CronJob latest-run lifecycle. CronJob focus, exact UID ownership,
+  controller-authored scheduled-timestamp ordering, historical-failure
+  isolation, fail-closed ambiguity handling, a dedicated finding and causal
+  edge, synthetic corpus coverage, RBAC documentation, and a two-phase targeted
+  Kind scenario are implemented. Retained historical failures do not make a
+  newer successful or active run look broken, and schedule arithmetic is not
+  guessed from wall-clock time. Keep this open until the new scenario is
+  observed green across the current remote Kubernetes matrix.
 
 Each slice requires its own API semantics review, permission impact, positive
 and negative fixtures, and real-cluster reproduction. NetworkPolicy, RBAC, and

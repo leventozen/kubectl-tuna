@@ -73,6 +73,10 @@ func evaluateScenario(t *testing.T, scenario, focusKind, namespace, name string)
 		graph, err := collector.CollectJob(ctx, namespace, name)
 		require.NoError(t, err)
 		return diag.NewEngine().Evaluate(graph)
+	case "cronjob":
+		graph, err := collector.CollectCronJob(ctx, namespace, name)
+		require.NoError(t, err)
+		return diag.NewEngine().Evaluate(graph)
 	case "pod":
 		graph, err := collector.CollectPod(ctx, namespace, name)
 		require.NoError(t, err)
@@ -149,6 +153,22 @@ func TestJobFailed(t *testing.T) {
 		diag.PodNotReady,
 		diag.JobFailed,
 	}, chainTypes(res.RootCauses[0]))
+}
+
+func TestCronJobLatestRunFailed(t *testing.T) {
+	res := evaluateScenario(t, "cronjob-latest-run-failed", "cronjob", "batch", "backup")
+	require.Equal(t, diag.HealthDegraded, res.Health)
+	require.False(t, res.Partial)
+	require.Len(t, res.RootCauses, 1)
+	require.Equal(t, []diag.FindingType{
+		diag.ContainerOOMKilled,
+		diag.PodNotReady,
+		diag.JobFailed,
+		diag.CronJobLatestRunFailed,
+	}, chainTypes(res.RootCauses[0]))
+	for _, finding := range res.Findings {
+		require.NotEqual(t, "backup-old", finding.Resource.Name, "retained historical Job must stay outside the latest-run diagnosis")
+	}
 }
 
 func TestServiceSelectorWithNoPodsDoesNotGuessIntendedWorkload(t *testing.T) {

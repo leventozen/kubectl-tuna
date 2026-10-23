@@ -9,6 +9,8 @@ import (
 	"github.com/leventozen/kubectl-tuna/internal/graph"
 )
 
+const cronJobScheduledTimestampAnnotation = "batch.kubernetes.io/cronjob-scheduled-timestamp"
+
 // jobFailedRule relies only on controller-authored Job conditions. Failed is
 // terminal; FailureTarget means failure criteria have been met while Pods are
 // still terminating. Pod counters alone do not prove either outcome.
@@ -77,4 +79,56 @@ func formatJobCondition(condition batchv1.JobCondition) string {
 		value += " message=" + condition.Message
 	}
 	return value
+}
+
+// cronJobLatestRunFailedRule deliberately depends on a collector-established
+// latest-run edge. Ordinary CronJob ownership is insufficient because retained
+// historical failures must not make a newer healthy or active run look broken.
+type cronJobLatestRunFailedRule struct{}
+
+func (cronJobLatestRunFailedRule) ID() string { return "cronjob-latest-run-failed" }
+
+func (cronJobLatestRunFailedRule) Evaluate(g *graph.Graph) []*Finding {
+	var findings []*Finding
+	for _, node := range g.NodesOfKind("CronJob") {
+		cronJob, ok := node.Object.(*batchv1.CronJob)
+		if !ok {
+			continue
+		}
+		for _, edge := range g.EdgesFrom(node.Ref, graph.EdgeLatestRun) {
+			jobNode, exists := g.Node(edge.To)
+			if !exists {
+				continue
+			}
+			job, ok := jobNode.Object.(*batchv1.Job)
+			if !ok {
+				continue
+			}
+			condition := trueJobCondition(job, batchv1.JobFailed)
+			if condition == nil {
+				condition = trueJobCondition(job, batchv1.JobFailureTarget)
+			}
+			if condition == nil {
+				continue
+			}
+
+			scheduledAt := job.Annotations[cronJobScheduledTimestampAnnotation]
+			findings = append(findings, &Finding{
+				Type:       CronJobLatestRunFailed,
+				Severity:   SeverityCritical,
+				Confidence: ConfidenceHigh,
+				Resource:   node.Ref,
+				Summary:    fmt.Sprintf("CronJob latest scheduled run %q met failure criteria", job.Name),
+				Detail:     "The uniquely latest owned Job, ordered by the controller-authored scheduled timestamp, has a Failed or FailureTarget condition. Older retained Job failures are not used for this conclusion.",
+				Evidence: []Evidence{
+					{Source: fmt.Sprintf("Job/%s.metadata.annotations[%s]", job.Name, cronJobScheduledTimestampAnnotation), Value: scheduledAt},
+					{Source: fmt.Sprintf("Job/%s.status.conditions[%s]", job.Name, condition.Type), Value: formatJobCondition(*condition)},
+				},
+				Recommendations: []string{
+					fmt.Sprintf("Inspect the latest Job and its logs: kubectl describe job %s -n %s; kubectl logs job/%s -n %s", job.Name, cronJob.Namespace, job.Name, cronJob.Namespace),
+				},
+			})
+		}
+	}
+	return findings
 }

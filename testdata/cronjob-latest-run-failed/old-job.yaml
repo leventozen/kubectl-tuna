@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backup-old
+  namespace: batch
+  uid: job-backup-old-uid
+  resourceVersion: "20"
+  annotations:
+    batch.kubernetes.io/cronjob-scheduled-timestamp: "2026-10-23T09:00:00Z"
+  ownerReferences:
+    - apiVersion: batch/v1
+      kind: CronJob
+      name: backup
+      uid: cronjob-backup-uid
+      controller: true
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: backup
+          image: busybox:1.36
+status:
+  failed: 1
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: BackoffLimitExceeded

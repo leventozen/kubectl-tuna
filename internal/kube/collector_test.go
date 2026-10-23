@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -388,6 +389,132 @@ func TestJobPodListFailureKeepsConditionDiagnosisAvailable(t *testing.T) {
 	require.True(t, res.Partial)
 	require.True(t, hasWarningSource(res, graph.SourcePod))
 	require.True(t, hasFindingType(res, diag.JobFailed))
+}
+
+func TestCronJobCollectorRetainsOnlyUniquelyLatestOwnedJob(t *testing.T) {
+	cronJob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "ns", UID: "cronjob-uid", ResourceVersion: "20"},
+	}
+	oldFailed := cronJobOwnedJob("backup-old", "old-job-uid", "cronjob-uid", "2026-10-23T10:00:00Z")
+	oldFailed.Status.Conditions = []batchv1.JobCondition{{
+		Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "BackoffLimitExceeded",
+	}}
+	latest := cronJobOwnedJob("backup-latest", "latest-job-uid", "cronjob-uid", "2026-10-23T11:00:00Z")
+	wrongOwner := cronJobOwnedJob("backup-unrelated", "other-job-uid", "other-cronjob-uid", "2026-10-23T12:00:00Z")
+	client := fakeClient(cronJob, oldFailed, latest, wrongOwner)
+
+	g, err := kube.NewCollector(client).CollectCronJob(context.Background(), "ns", "backup")
+	require.NoError(t, err)
+	cronJobRef := graph.ResourceRef{Kind: "CronJob", Namespace: "ns", Name: "backup"}
+	latestRef := graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup-latest"}
+	require.True(t, g.HasEdge(cronJobRef, latestRef, graph.EdgeOwns))
+	require.True(t, g.HasEdge(cronJobRef, latestRef, graph.EdgeLatestRun))
+	require.Equal(t, 1, actionCount(client.Actions(), "list", "jobs"), "CronJob focus requires one namespace Job list")
+	require.Equal(t, 2, actionCount(client.Actions(), "get", "cronjobs"), "focus CronJob is read at collection start and end")
+	_, exists := g.Node(graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup-old"})
+	require.False(t, exists, "historical failed Jobs must not enter a CronJob-focused graph")
+	_, exists = g.Node(graph.ResourceRef{Kind: "Job", Namespace: "ns", Name: "backup-unrelated"})
+	require.False(t, exists, "a newer timestamp cannot replace exact owner identity")
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthOK, res.Health)
+	require.Empty(t, res.Findings)
+}
+
+func TestCronJobCollectorLatestFailureDegradesCronJob(t *testing.T) {
+	cronJob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "ns", UID: "cronjob-uid", ResourceVersion: "20"},
+	}
+	latest := cronJobOwnedJob("backup-latest", "latest-job-uid", "cronjob-uid", "2026-10-23T11:00:00Z")
+	latest.Status.Conditions = []batchv1.JobCondition{{
+		Type: batchv1.JobFailed, Status: corev1.ConditionTrue, Reason: "BackoffLimitExceeded",
+	}}
+	client := fakeClient(cronJob, latest)
+
+	g, err := kube.NewCollector(client).CollectCronJob(context.Background(), "ns", "backup")
+	require.NoError(t, err)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthDegraded, res.Health)
+	require.True(t, hasFindingType(res, diag.JobFailed))
+	require.True(t, hasFindingType(res, diag.CronJobLatestRunFailed))
+}
+
+func TestCronJobCollectorFailsClosedWhenLatestRunCannotBeOrdered(t *testing.T) {
+	tests := []struct {
+		name string
+		jobs []*batchv1.Job
+	}{
+		{
+			name: "missing timestamp",
+			jobs: []*batchv1.Job{cronJobOwnedJob("backup-run", "job-uid", "cronjob-uid", "")},
+		},
+		{
+			name: "duplicate latest timestamp",
+			jobs: []*batchv1.Job{
+				cronJobOwnedJob("backup-a", "job-a-uid", "cronjob-uid", "2026-10-23T11:00:00Z"),
+				cronJobOwnedJob("backup-b", "job-b-uid", "cronjob-uid", "2026-10-23T11:00:00Z"),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cronJob := &batchv1.CronJob{
+				ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "ns", UID: "cronjob-uid", ResourceVersion: "20"},
+			}
+			objects := []runtime.Object{cronJob}
+			for _, job := range tt.jobs {
+				objects = append(objects, job)
+			}
+			g, err := kube.NewCollector(fakeClient(objects...)).CollectCronJob(context.Background(), "ns", "backup")
+			require.NoError(t, err)
+			res := diag.NewEngine().Evaluate(g)
+			require.Equal(t, diag.HealthUnknown, res.Health)
+			require.True(t, res.Partial)
+			require.True(t, hasWarningSource(res, graph.SourceJob))
+			require.Empty(t, g.EdgesFrom(g.Focus, graph.EdgeLatestRun))
+		})
+	}
+}
+
+func TestCronJobCollectorFailsClosedWhenScheduledHistoryWasRemoved(t *testing.T) {
+	lastSchedule := metav1.NewTime(time.Date(2026, 10, 23, 11, 0, 0, 0, time.UTC))
+	cronJob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "ns", UID: "cronjob-uid", ResourceVersion: "20"},
+		Status:     batchv1.CronJobStatus{LastScheduleTime: &lastSchedule},
+	}
+	g, err := kube.NewCollector(fakeClient(cronJob)).CollectCronJob(context.Background(), "ns", "backup")
+	require.NoError(t, err)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthUnknown, res.Health)
+	require.True(t, hasWarningSource(res, graph.SourceJob))
+}
+
+func TestCronJobCollectorFailsClosedWhenJobsCannotBeListed(t *testing.T) {
+	cronJob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "ns", UID: "cronjob-uid", ResourceVersion: "20"},
+	}
+	client := fakeClient(cronJob)
+	client.PrependReactor("list", "jobs", func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("forbidden")
+	})
+
+	g, err := kube.NewCollector(client).CollectCronJob(context.Background(), "ns", "backup")
+	require.NoError(t, err)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthUnknown, res.Health)
+	require.True(t, res.Partial)
+	require.True(t, hasWarningSource(res, graph.SourceJob))
+}
+
+func TestCronJobCollectorAcceptsNeverScheduledCronJobWithoutHistory(t *testing.T) {
+	cronJob := &batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{Name: "backup", Namespace: "ns", UID: "cronjob-uid", ResourceVersion: "20"},
+	}
+	g, err := kube.NewCollector(fakeClient(cronJob)).CollectCronJob(context.Background(), "ns", "backup")
+	require.NoError(t, err)
+	res := diag.NewEngine().Evaluate(g)
+	require.Equal(t, diag.HealthOK, res.Health)
+	require.False(t, res.Partial)
+	require.Empty(t, res.Findings)
 }
 
 func TestStaleRelatedDeploymentSuspendsServiceDiagnosis(t *testing.T) {
@@ -1062,5 +1189,19 @@ func cronJobOwnerRef(name string, uid types.UID) metav1.OwnerReference {
 	return metav1.OwnerReference{
 		APIVersion: batchv1.SchemeGroupVersion.String(), Kind: "CronJob",
 		Name: name, UID: uid, Controller: &controller,
+	}
+}
+
+func cronJobOwnedJob(name string, uid, cronJobUID types.UID, scheduledAt string) *batchv1.Job {
+	annotations := map[string]string{}
+	if scheduledAt != "" {
+		annotations["batch.kubernetes.io/cronjob-scheduled-timestamp"] = scheduledAt
+	}
+	return &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name, Namespace: "ns", UID: uid, ResourceVersion: "10",
+			Annotations:     annotations,
+			OwnerReferences: []metav1.OwnerReference{cronJobOwnerRef("backup", cronJobUID)},
+		},
 	}
 }

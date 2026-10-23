@@ -33,6 +33,7 @@ type EdgeType string
 
 const (
 	EdgeOwns          EdgeType = "owns"           // Controller ownership, e.g. Deployment→ReplicaSet→Pod, StatefulSet→Pod, or CronJob→Job→Pod
+	EdgeLatestRun     EdgeType = "latest-run"     // CronJob's uniquely identified latest scheduled Job
 	EdgeSelects       EdgeType = "selects"        // Service selects Pod
 	EdgeRoutesTo      EdgeType = "routes-to"      // Service routes to EndpointSlice
 	EdgeReferences    EdgeType = "references"     // Pod references ConfigMap/Secret

@@ -25,6 +25,7 @@ Inspect with the built binary directly:
 ./bin/kubectl-tuna inspect deployment NAME -n NAMESPACE
 ./bin/kubectl-tuna inspect statefulset NAME -n NAMESPACE
 ./bin/kubectl-tuna inspect job NAME -n NAMESPACE
+./bin/kubectl-tuna inspect cronjob NAME -n NAMESPACE
 ./bin/kubectl-tuna inspect pod NAME -n NAMESPACE
 ```
 
